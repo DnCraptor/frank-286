@@ -1,0 +1,434 @@
+#include "misc.h"
+#include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+
+#ifdef RP2350_BUILD
+// RP2350: time functions provided by platform_rp2350.c
+#include "pico/stdlib.h"
+#include "platform_rp2350.h"
+#include "ff.h"  // FatFS for SD card access
+#include "debug.h"
+#ifndef EIO
+#define EIO 5
+#endif
+#else
+#include <time.h>
+#include <unistd.h>
+#endif
+
+#if !defined(_WIN32) && !defined(__wasm__) && !defined(RP2350_BUILD)
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <signal.h>
+#endif
+#ifdef BUILD_ESP32
+#include "driver/uart.h"
+#endif
+
+#if !defined(_WIN32) && !defined(__wasm__) && !defined(RP2350_BUILD)
+static void CtrlC(int _)
+{
+	exit( 0 );
+}
+
+static void ResetKeyboardInput()
+{
+	// Re-enable echo, etc. on keyboard.
+	struct termios term;
+	tcgetattr(0, &term);
+	term.c_lflag |= ICANON | ECHO;
+	tcsetattr(0, TCSANOW, &term);
+}
+
+// Override keyboard, so we can capture all keyboard input for the VM.
+void CaptureKeyboardInput()
+{
+	// Hook exit, because we want to re-enable keyboard.
+#ifndef BUILD_ESP32
+	atexit(ResetKeyboardInput);
+	signal(SIGINT, CtrlC);
+#endif
+
+	struct termios term;
+	tcgetattr(0, &term);
+	term.c_lflag &= ~(ICANON | ECHO | ISIG); // Disable echo as well
+	tcsetattr(0, TCSANOW, &term);
+}
+
+static int ReadKBByte()
+{
+#ifdef BUILD_ESP32
+	char data;
+	if (uart_read_bytes(0, &data, 1, 20 / portTICK_PERIOD_MS) > 0) {
+		return data;
+	}
+	return -1;
+#else
+	char rxchar = 0;
+	int rread = read(fileno(stdin), (char*)&rxchar, 1);
+	if( rread > 0 ) // Tricky: getchar can't be used with arrow keys.
+		return rxchar;
+	else
+		abort();
+#endif
+}
+
+static int IsKBHit()
+{
+#ifdef BUILD_ESP32
+	size_t len;
+	if (uart_get_buffered_data_len(0, &len) == ESP_OK) {
+		if (len)
+			return 1;
+	}
+	return 0;
+#else
+	int byteswaiting;
+	ioctl(0, FIONREAD, &byteswaiting);
+	return !!byteswaiting;
+#endif
+}
+#endif
+
+/* sysprog21/semu */
+struct U8250 {
+	uint8_t dll, dlh;
+	uint8_t lcr;
+	uint8_t ier;
+	uint8_t mcr;
+	uint8_t ioready;
+	int out_fd;
+	uint8_t in;
+
+	int irq;
+	void *pic;
+	void (*set_irq)(void *pic, int irq, int level);
+};
+
+U8250 *u8250_init(int irq, void *pic, void (*set_irq)(void *pic, int irq, int level))
+{
+	U8250 *s = malloc(sizeof(U8250));
+	memset(s, 0, sizeof(U8250));
+	s->out_fd = 1;
+
+	s->irq = irq;
+	s->pic = pic;
+	s->set_irq = set_irq;
+	return s;
+}
+
+struct CMOS {
+	uint8_t data[128];
+	int index;
+	int irq;
+	uint32_t irq_timeout;
+	uint32_t irq_period;
+	void *pic;
+	void (*set_irq)(void *pic, int irq, int level);
+};
+
+static int bin2bcd(int a)
+{
+	return ((a / 10) << 4) | (a % 10);
+}
+
+static int month_from_str(const char *m)
+{
+    static const char *months = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    for (int i = 0; i < 12; i++) {
+        if (strncmp(m, months + i * 3, 3) == 0)
+            return i + 1;
+    }
+    return 1;
+}
+
+static void cmos_update_time(CMOS *s)
+{
+    /* Parse compile date: "Mmm dd yyyy" */
+    const char *d = __DATE__;
+
+    int month = month_from_str(d);
+    int day = (d[4] == ' ') ? (d[5] - '0') : (10 * (d[4] - '0') + (d[5] - '0'));
+    int year = (d[7] - '0') * 1000 +
+               (d[8] - '0') * 100 +
+               (d[9] - '0') * 10 +
+               (d[10] - '0');
+
+    /* Optional: parse compile time */
+    const char *t = __TIME__;
+    int hour = (t[0] - '0') * 10 + (t[1] - '0');
+    int min  = (t[3] - '0') * 10 + (t[4] - '0');
+    int sec  = (t[6] - '0') * 10 + (t[7] - '0');
+
+    s->data[0] = bin2bcd(sec);
+    s->data[2] = bin2bcd(min);
+    s->data[4] = bin2bcd(hour);
+
+    /* weekday неизвестен — можно оставить 1 */
+    s->data[6] = bin2bcd(1);
+
+    s->data[7] = bin2bcd(day);
+    s->data[8] = bin2bcd(month);
+    s->data[9] = bin2bcd(year % 100);
+
+    /* century */
+    s->data[0x32] = bin2bcd(year / 100);
+}
+
+void cmos_set_floppy_types(CMOS *c, uint8_t type_a, uint8_t type_b) {
+    if (!c) return;
+    c->data[0x10] = ((type_a & 0xF) << 4) | (type_b & 0xF);
+}
+
+CMOS *cmos_init(long mem_size, int irq, void *pic, void (*set_irq)(void *pic, int irq, int level))
+{
+	CMOS *c = malloc(sizeof(CMOS));
+	memset(c, 0, sizeof(CMOS));
+	c->irq = irq;
+	c->pic = pic;
+	c->set_irq = set_irq;
+
+	cmos_update_time(c);
+	c->data[0x10] = 0x44;  /* floppy: A=1.44M(4), B=1.44M(4) */
+	c->data[10] = 0x26;
+	c->data[11] = 0x02;
+	c->data[12] = 0x00;
+	c->data[13] = 0x80;
+	if (mem_size >= 1024 * 1024) {
+		if (mem_size >= 64 * 1024 * 1024) {
+			mem_size -= 16 * 1024 * 1024;
+			c->data[0x35] = mem_size >> 24;
+			c->data[0x34] = mem_size >> 16;
+		} else {
+			mem_size -= 1024 * 1024;
+			uint32_t ext_kb = mem_size >> 10;
+			c->data[0x31] = ext_kb >> 8;
+			c->data[0x30] = ext_kb & 0xff;
+		}
+	}
+	/* old AT extended memory field */
+	c->data[0x16] = c->data[0x31];
+	c->data[0x15] = c->data[0x30];
+	// extended memory above 16MB mirror
+	c->data[0x17] = c->data[0x35];
+	c->data[0x18] = c->data[0x34];
+	return c;
+}
+
+static void u8250_update_interrupts(U8250 *uart)
+{
+	if (uart->ier & uart->ioready) {
+		uart->set_irq(uart->pic, uart->irq, 1);
+	} else {
+		uart->set_irq(uart->pic, uart->irq, 0);
+	}
+}
+
+uint8_t u8250_reg_read(U8250 *uart, int off)
+{
+	uint8_t val;
+	switch (off) {
+	case 0:
+		if (uart->lcr & (1 << 7)) { /* DLAB */
+			val = uart->dll;
+			break;
+		}
+		val = uart->in;
+		uart->ioready &= ~1;
+		u8250_update_interrupts(uart);
+		break;
+	case 1:
+		if (uart->lcr & (1 << 7)) { /* DLAB */
+			val = uart->dlh;
+			break;
+		}
+		val = uart->ier;
+		break;
+	case 2:
+		val = (uart->ier & uart->ioready) ? 0 : 1;
+		break;
+	case 3:
+		val = uart->lcr;
+		break;
+	case 4:
+		val = uart->mcr;
+		break;
+	case 5:
+		/* LSR = no error, TX done & ready */
+		val = 0x60 | (uart->ioready & 1);
+		break;
+	case 6:
+		/* MSR = carrier detect, no ring, data ready, clear to send. */
+		val = 0xb0;
+		break;
+		/* no scratch register, so we should be detected as a plain 8250. */
+	default:
+		val = 0;
+	}
+	return val;
+}
+
+void u8250_reg_write(U8250 *uart, int off, uint8_t val)
+{
+	switch (off) {
+	case 0:
+		if (uart->lcr & (1 << 7)) {
+			uart->dll = val;
+			break;
+		} else {
+#if !defined(__wasm__) && !defined(RP2350_BUILD)
+			ssize_t r;
+			do {
+				r = write(uart->out_fd, &val, 1);
+			} while (r == -1 && errno == EINTR);
+#elif defined(DEBUG_ENABLED)
+			putchar(val);
+#endif
+		}
+		break;
+	case 1:
+		if (uart->lcr & (1 << 7)) {
+			uart->dlh = val;
+			break;
+		} else {
+			uart->ier = val;
+			if (uart->ier & 2)
+				uart->ioready |= 2;
+			else
+				uart->ioready &= ~2;
+			u8250_update_interrupts(uart);
+		}
+		break;
+	case 3:
+		uart->lcr = val;
+		break;
+	case 4:
+		uart->mcr = val;
+		break;
+	}
+}
+
+void u8250_update(U8250 *uart)
+{
+#if !defined(_WIN32) && !defined(__wasm__) && !defined(RP2350_BUILD)
+	if (IsKBHit()) {
+		if (!(uart->ioready & 1)) {
+			uart->in = ReadKBByte();
+			uart->ioready |= 1;
+			u8250_update_interrupts(uart);
+		}
+	}
+#else
+	(void)uart;  // Suppress unused parameter warning
+#endif
+}
+
+#define CMOS_FREQ 32768
+#define RTC_REG_A               10
+#define RTC_REG_B               11
+#define RTC_REG_C               12
+#define RTC_REG_D               13
+#define REG_A_UIP 0x80
+#define REG_B_SET 0x80
+#define REG_B_PIE 0x40
+#define REG_B_AIE 0x20
+#define REG_B_UIE 0x10
+
+static uint32_t cmos_get_timer(CMOS *s)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (uint32_t)ts.tv_sec * CMOS_FREQ +
+		((uint64_t)ts.tv_nsec * CMOS_FREQ / 1000000000);
+}
+
+static void cmos_update_timer(CMOS *s)
+{
+	int period_code;
+
+	period_code = s->data[RTC_REG_A] & 0x0f;
+	if ((s->data[RTC_REG_B] & REG_B_PIE) &&
+	    period_code != 0) {
+		if (period_code <= 2)
+			period_code += 7;
+		s->irq_period = 1 << (period_code - 1);
+		s->irq_timeout = (cmos_get_timer(s) + s->irq_period) &
+			~(s->irq_period - 1);
+	}
+}
+
+void __not_in_flash_func(cmos_update_irq)(CMOS *s)
+{
+	uint32_t d;
+	if (s->data[RTC_REG_B] & REG_B_PIE) {
+		d = cmos_get_timer(s) - s->irq_timeout;
+		if ((int32_t)d >= 0) {
+			/* this is not what the real RTC does. Here we sent the IRQ
+			   immediately */
+			s->data[RTC_REG_C] |= 0xc0;
+			s->set_irq(s->pic, s->irq, 1);
+			s->set_irq(s->pic, s->irq, 0);
+			/* update for the next irq */
+			s->irq_timeout += s->irq_period;
+		}
+	}
+}
+
+uint8_t cmos_ioport_read(CMOS *cmos, int addr)
+{
+	if (addr == 0x70)
+		return 0xff;
+	cmos_update_time(cmos);
+	uint8_t val = cmos->data[cmos->index];
+	return val;
+}
+
+void cmos_ioport_write(CMOS *cmos, int addr, uint8_t val)
+{
+	if (addr == 0x70)
+		cmos->index = val & 0x7f;
+	else {
+		CMOS *s = cmos;
+		switch(s->index) {
+		case RTC_REG_A:
+			s->data[RTC_REG_A] = (val & ~REG_A_UIP) |
+				(s->data[RTC_REG_A] & REG_A_UIP);
+			cmos_update_timer(s);
+			break;
+		case RTC_REG_B:
+			s->data[s->index] = val;
+			cmos_update_timer(s);
+			break;
+		default:
+			s->data[s->index] = val;
+			break;
+		}
+	}
+}
+
+uint8_t cmos_set(void *cmos, int addr, uint8_t val)
+{
+	CMOS *s = cmos;
+	if (addr < 128) {
+		s->data[addr] = val;
+	}
+	return val;
+}
+
+/* Пересчитать CMOS checksum (0x10..0x2D) и записать в 0x2E/0x2F.
+ * Вызывать после любых изменений CMOS, до старта BIOS. */
+void cmos_update_checksum(void *cmos)
+{
+	CMOS *s = cmos;
+	uint16_t sum = 0;
+	for (int i = 0x10; i <= 0x2D; i++)
+		sum += s->data[i];
+	s->data[0x2E] = (sum >> 8) & 0xFF;
+	s->data[0x2F] = sum & 0xFF;
+}
+
+/* EMULINK removed - disk operations use INT 13h disk handler instead */
