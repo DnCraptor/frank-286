@@ -27,6 +27,43 @@ while(1); // remove it
 }
 
 /*
+VIDEO - SET CURSOR POSITION
+AH = 02h
+BH = page number
+0-3 in modes 2&3
+0-7 in modes 0&1
+0 in graphics modes
+DH = row (00h is top)
+DL = column (00h is left)
+
+Return:
+Nothing
+*/
+static bool bios_10h_02h() {
+    uint8_t page = CPU_BH;
+    uint8_t row = CPU_DH;
+    uint8_t col = CPU_DL;
+    uint16_t cur;
+    /*
+     * BDA:
+     * 40:50..5F = cursor positions for pages
+     * high byte = row
+     * low byte  = column
+     */
+    cur = ((uint16_t)row << 8) | col;
+    writew86(0x450 + ((uint16_t)page * 2), cur);
+
+    /*
+     * Update visible hardware cursor only for active page.
+     */
+    if (page == read86(0x462)) {
+        cursor_x = col;
+        cursor_y = row;
+    }
+    return true;
+}
+
+/*
 AH = 0Eh
 AL = character to write
 BH = page number
@@ -40,7 +77,7 @@ Desc: Display a character on the screen, advancing the cursor and scrolling the 
 Notes: Characters 07h (BEL), 08h (BS), 0Ah (LF), and 0Dh (CR) are interpreted and do the expected things.
  IBM PC ROMs dated 1981/4/24 and 1981/10/19 require that BH be the same as the current active page
 */
-static bool bios_10h_0E() {
+static bool bios_10h_0Eh() {
     uint8_t ch = CPU_AL;
     uint8_t mode = read86(0x449);
     uint16_t cols = readw86(0x44A);
@@ -147,8 +184,10 @@ static bool bios_10h_0E() {
 
 bool bios_10h() {
     switch(CPU_AH) {
+        case 0x02:
+            return bios_10h_02h(); // SET CURSOR POSITION
         case 0x0E:
-            return bios_10h_0E(); // TELETYPE OUTPUT
+            return bios_10h_0Eh(); // TELETYPE OUTPUT
         default:
             no_handler();
     }

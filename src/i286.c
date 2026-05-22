@@ -561,6 +561,7 @@ i286* i286_new(CPU_CB* *cb) {
     }
     handlers[0x00] = bios_00h;
     handlers[0x10] = bios_10h;
+    handlers[0x13] = bios_13h;
     handlers[0x18] = bios_18h;
     handlers[0x19] = bios_19h;
     return _cpu;

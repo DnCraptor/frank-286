@@ -5,6 +5,7 @@
 
 bool bios_00h(); // Division by zero, etc...
 bool bios_10h(); // VIDEO 
+bool bios_13h(); // DISK 
 bool bios_18h(); // Call internal Basic
 bool bios_19h(); // Bootstrap
 
