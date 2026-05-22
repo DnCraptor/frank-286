@@ -138,6 +138,58 @@ static void bios_10h_set_crtc_cursor(uint8_t page,
 }
 
 /*
+VIDEO - SET TEXT-MODE CURSOR SHAPE
+AH = 01h
+CH = cursor start scan line (bits 0-4) + options (bits 5-6)
+     bit 5: 0 = normal, 1 = cursor invisible (CGA/EGA/VGA)
+     bit 6: reserved
+CL = cursor end scan line (bits 0-4)
+
+BDA: 0x460 = cursor shape word (CH<<8 | CL), as stored and returned by AH=03h
+CRTC: reg 0Ah = start scan / cursor disable, reg 0Bh = end scan
+*/
+static bool bios_10h_01h(void)
+{
+    uint8_t ch_raw = CPU_CH;
+    uint8_t cl     = CPU_CL & 0x1F;
+    uint8_t start  = ch_raw & 0x1F;       /* scan start, bits 4:0 */
+    bool    hidden = (ch_raw & 0x20) != 0; /* bit 5 = cursor disable */
+
+    /* Remap CGA-relative scan lines to actual font height.
+     * Software passes coordinates assuming an 8-line font.
+     * VGA BIOS behaviour: preserve the span (end-start) and
+     * anchor it to the bottom of the glyph. */
+    uint8_t fh = read86(0x485);
+    if (fh == 0) fh = 16;
+    if (fh != 8 && cl >= start) {
+        uint8_t span   = cl - start;
+        uint8_t new_cl = fh - 1;
+        uint8_t new_st = (span < new_cl) ? (new_cl - span) : 0;
+        start = new_st;
+        cl    = new_cl;
+    }
+    
+    /* Save raw CH:CL in BDA 0x460 (what AH=03h returns) */
+    writew86(0x460, ((uint16_t)ch_raw << 8) | cl);
+
+    /* Program CRTC */
+    uint16_t crtc = readw86(0x463);
+    if (crtc == 0) crtc = 0x3D4;
+
+    /* CRTC reg 0Ah: bit5=CD (cursor disable), bits4:0=start scan line */
+    uint8_t reg0a = start;
+    if (hidden) reg0a |= 0x20;
+    cpu_portout8(crtc,     0x0A);
+    cpu_portout8(crtc + 1, reg0a);
+
+    /* CRTC reg 0Bh: bits4:0=end scan line */
+    cpu_portout8(crtc,     0x0B);
+    cpu_portout8(crtc + 1, cl);
+
+    return true;
+}
+
+/*
 VIDEO - SET CURSOR POSITION
 AH = 02h
 BH = page number
@@ -164,6 +216,36 @@ static bool bios_10h_02h() {
     cur = ((uint16_t)row << 8) | col;
     writew86(0x450 + ((uint16_t)page * 2), cur);
     bios_10h_set_crtc_cursor(page, row, col);
+    return true;
+}
+
+/*
+VIDEO - GET CURSOR POSITION AND SIZE
+AH = 03h
+BH = page number
+0-3 in modes 2&3
+0-7 in modes 0&1
+0 in graphics modes
+
+Return:
+AX = 0000h (Phoenix BIOS)
+CH = start scan line
+CL = end scan line
+DH = row (00h is top)
+DL = column (00h is left)
+
+Notes: A separate cursor is maintained for each of up to 8 display pages. Many ROM BIOSes incorrectly return the default size for a
+color display (start 06h, end 07h) when a monochrome display is attached. With PhysTechSoft's PTS ROM-DOS the BH value is ignored on entry.
+*/
+static bool bios_10h_03h() {
+    uint8_t page = CPU_BH;
+    uint16_t shape = readw86(0x460);
+    uint16_t cur   = readw86(0x450 + ((uint16_t)page * 2));
+    CPU_AX = 0;
+    CPU_CH = (uint8_t)(shape >> 8);   /* cursor start scan line */
+    CPU_CL = (uint8_t)(shape & 0xFF); /* cursor end scan line   */
+    CPU_DH = (uint8_t)(cur >> 8);     /* row */
+    CPU_DL = (uint8_t)(cur & 0xFF);   /* column */
     return true;
 }
 
@@ -356,8 +438,12 @@ static bool bios_10h_1130h() {
 
 bool bios_10h() {
     switch(CPU_AH) {
+        case 0x01:
+            return bios_10h_01h(); // SET CURSOR SHAPE
         case 0x02:
             return bios_10h_02h(); // SET CURSOR POSITION
+        case 0x03:
+            return bios_10h_03h(); // GET CURSOR POSITION AND SIZE
         case 0x0E:
             return bios_10h_0Eh(); // TELETYPE OUTPUT
         default:
@@ -374,7 +460,7 @@ bool bios_10h() {
 #include "font8x16.h"
 // TODO: other fonts 8x14, 8x8
 
-void bios_10h_install_rom_fonts(void)
+void bios_10h_install_rom_fonts(void) // calling from load_bios_and_reset
 {
     /*
      * INT 10h/AX=1130h must return a guest-visible ES:BP pointer.
