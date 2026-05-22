@@ -1270,6 +1270,17 @@ void load_bios_and_reset(PC *pc)
     pstore8(0xFFF04, 0xE6); // OUT 20h,AL
     pstore8(0xFFF05, 0x20);
     pstore8(0xFFF06, 0xCF); // IRET
+// INT 15h support:
+    const uint32_t table = 0xFFF10;
+    pstore16(table + 0x00, 0x0008); /* number of bytes following */
+    pstore8 (table + 0x02, 0xFC);   /* model: IBM PC AT */
+    pstore8 (table + 0x03, 0x00);   /* submodel */
+    pstore8 (table + 0x04, 0x00);   /* BIOS revision */
+    pstore8 (table + 0x05, 0x60);   /* feature byte 1: slave PIC + RTC */
+    pstore8 (table + 0x06, 0x00);   /* feature byte 2 */
+    pstore8 (table + 0x07, 0x00);   /* feature byte 3 */
+    pstore8 (table + 0x08, 0x00);   /* feature byte 4 */
+    pstore8 (table + 0x09, 0x00);   /* feature byte 5 */
 
 // Bootstrap
 	bios_19h();
