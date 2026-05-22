@@ -53,6 +53,8 @@ bool bios_15h() {
             return bios_15h_88h(); // GET EXTENDED MEMORY SIZE (286+)
         default:
             no_handler();
+        case 0x41: // WAIT ON EXTERNAL EVENT (CONVERTIBLE and some others)
+            // unsupported
     }
     cf = 1;
     CPU_AH = 0x86;   // unsupported function

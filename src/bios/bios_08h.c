@@ -27,11 +27,26 @@ bool bios_08h(void)
     }
     pstore32(0x046C, ticks);
 
-    /* 3: chain to INT 1Ch (user tick hook) */
-    intcall86(0x1C);
+    /* 3: chain to INT 1Ch (user tick hook)
+    Moved to: void load_bios_and_reset(PC *pc)
+int 1Ch
+out 20h, 20h
+iret    
+    pstore8(0xFFF00, 0xCD); // INT imm8
+    pstore8(0xFFF01, 0x1C);
 
-    /* 4: Non-Specific EOI to master PIC */
-    cpu_portout8(0x20, 0x20);
+    pstore8(0xFFF02, 0xB0); // MOV AL,20h
+    pstore8(0xFFF03, 0x20);
 
-    return true;
+    /* 4: Non-Specific EOI to master PIC * /
+    pstore8(0xFFF04, 0xE6); // OUT 20h,AL
+    pstore8(0xFFF05, 0x20);
+
+    pstore8(0xFFF06, 0xCF); // IRET
+*/
+
+    CPU_CS = 0xFFF0;
+    CPU_IP = 0x0000;
+
+    return false;
 }

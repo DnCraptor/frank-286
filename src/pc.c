@@ -1249,6 +1249,20 @@ void load_bios_and_reset(PC *pc)
 		pstore16(ipa*4, 0xFFFF - ipa);
 		pstore16(ipa*4 + 2, 0xFFFF);
 	}
+// Timer specific W/A
+    /* chain to INT 1Ch (user tick hook)
+		int 1Ch
+		out 20h, 20h
+		iret    
+    */
+    pstore8(0xFFF00, 0xCD); // INT imm8
+    pstore8(0xFFF01, 0x1C);
+    pstore8(0xFFF02, 0xB0); // MOV AL,20h
+    pstore8(0xFFF03, 0x20);
+    pstore8(0xFFF04, 0xE6); // OUT 20h,AL
+    pstore8(0xFFF05, 0x20);
+    pstore8(0xFFF06, 0xCF); // IRET
+
 // Bootstrap
 	bios_19h();
 }

@@ -1323,9 +1323,9 @@ void __not_in_flash() i286_step(i286* cpu, uint32_t execloops) {
         if (unlikely(ifl && irq_pending)) {
             irq_pending = 0;
             if (cpu->cb.pic && cpu->cb.pic_read_irq) {
-                int irqnum = cpu->cb.pic_read_irq(cpu->cb.pic);
-                if (irqnum >= 0) {
-                    intcall86((uint8_t)irqnum);
+                int intno = cpu->cb.pic_read_irq(cpu->cb.pic);
+                if (intno >= 0) {
+                    intcall86((uint8_t)intno);
                 }
             }
         }        
