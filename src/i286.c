@@ -553,6 +553,12 @@ static bool rp2350_bios_handler(uint8_t intnum) {
     return handlers[intnum]();
 }
 
+/* Silent no-op stub: used for BIOS hooks that have no default action.
+ * Returns true so the main loop performs a clean IRET. */
+static bool nop_handler() {
+    return true;
+}
+
 i286* i286_new(CPU_CB* *cb) {
     _cpu = (i286*)calloc(sizeof(i286), 1);
     *cb = &_cpu->cb;
@@ -560,10 +566,13 @@ i286* i286_new(CPU_CB* *cb) {
         handlers[i] = no_handler;
     }
     handlers[0x00] = bios_00h;
+    handlers[0x08] = bios_08h;
     handlers[0x10] = bios_10h;
     handlers[0x13] = bios_13h;
     handlers[0x18] = bios_18h;
     handlers[0x19] = bios_19h;
+    handlers[0x1A] = bios_1Ah;
+    handlers[0x1C] = nop_handler; /* INT 1Ch: user timer tick hook — no-op until replaced by a TSR */
     return _cpu;
 }
 
@@ -1238,6 +1247,9 @@ u8 cpu_get_dl(i286 *cpu)           { (void)cpu; return CPU_DL; }
 u8 cpu_get_dh(i286 *cpu)           { (void)cpu; return CPU_DH; }
 
 void cpu_set_al(i286 *cpu, u8 val) { (void)cpu; CPU_AL = val; }
+
+void cpu_portout8(u16 port, u8 val)  { portout(port, val); }
+u8   cpu_portin8 (u16 port)          { return portin(port); }
 
 /* ------------------------------------------------------------------ *
  *  16-bit register getters / setters                                 *

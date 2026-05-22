@@ -1218,6 +1218,29 @@ void load_bios_and_reset(PC *pc)
 	pstore8 (0x487, 0x00);                               /* video control */
 	pstore8 (0x488, 0x00);                               /* switches */
 	pstore8 (0x489, 0x00);                               /* VGA flags */
+
+// init PIC (i8259) — IBM PC/AT sequence
+	// Master PIC: base vector 0x08 (IRQ0→INT 08h … IRQ7→INT 0Fh)
+	i8259_ioport_write(pc->pic, 0x20, 0x11); // ICW1: edge, cascade, ICW4 needed
+	i8259_ioport_write(pc->pic, 0x21, 0x08); // ICW2: base vector 0x08
+	i8259_ioport_write(pc->pic, 0x21, 0x04); // ICW3: slave on IRQ2
+	i8259_ioport_write(pc->pic, 0x21, 0x01); // ICW4: 8086 mode
+	i8259_ioport_write(pc->pic, 0x21, 0x00); // OCW1: unmask all IRQs
+	// Slave PIC: base vector 0x70 (IRQ8→INT 70h … IRQ15→INT 77h)
+	i8259_ioport_write(pc->pic, 0xA0, 0x11); // ICW1
+	i8259_ioport_write(pc->pic, 0xA1, 0x70); // ICW2: base vector 0x70
+	i8259_ioport_write(pc->pic, 0xA1, 0x02); // ICW3: slave id 2
+	i8259_ioport_write(pc->pic, 0xA1, 0x01); // ICW4: 8086 mode
+	i8259_ioport_write(pc->pic, 0xA1, 0x00); // OCW1: unmask all IRQs
+
+// init PIT (i8254) — channel 0: mode 3, 18.2 Hz
+	// OUT 43h, 36h: channel 0, LSB/MSB, mode 3 (square wave), binary
+	// OUT 40h, 00h: LSB=0
+	// OUT 40h, 00h: MSB=0  → count = 0x10000 = 65536 → 1193182/65536 ≈ 18.2 Hz
+	i8254_ioport_write(pc->pit, 0x43, 0x36);
+	i8254_ioport_write(pc->pit, 0x40, 0x00);
+	i8254_ioport_write(pc->pit, 0x40, 0x00);
+
 // init IVT
     for (uint16_t ipa = 0; ipa <= 0xFF; ++ipa) {
 		pstore16(ipa*4, 0xFFFF - ipa);

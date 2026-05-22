@@ -246,6 +246,10 @@ void cpu_set_int2f_handler(i286 *cpu, int2f_handler_t handler, void *opaque);
 
 void i286_step(i286 *cpu, uint32_t n);
 void cpu_raise_irq(void*);
+
+void cpu_portout8(u16 port, u8 val);
+u8   cpu_portin8 (u16 port);
+void intcall86(uint8_t intnum);
 i286* i286_new(CPU_CB* *cb);
 void i286_enable_fpu(i286 *);
 void i286_reset(i286 *cpu);
