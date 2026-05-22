@@ -288,6 +288,9 @@ bool bios_10h() {
             return bios_10h_0Eh(); // TELETYPE OUTPUT
         default:
             no_handler();
+        case 0x74: // ? HUNTER 16 - SET LCD WINDOWS POSITION
+         // unsupported
     }
+    cf = 1; // unsuported unknown function
     return true;
 }

@@ -559,6 +559,12 @@ static bool nop_handler() {
     return true;
 }
 
+//  Minimal fake printer: ready, selected, no error.
+static bool bios_17h(void) {
+    CPU_AH = 0x90;
+    return true;
+}
+
 i286* i286_new(CPU_CB* *cb) {
     _cpu = (i286*)calloc(sizeof(i286), 1);
     *cb = &_cpu->cb;
@@ -566,18 +572,22 @@ i286* i286_new(CPU_CB* *cb) {
         handlers[i] = no_handler;
     }
     handlers[0x00] = bios_00h;
+    handlers[0x05] = nop_handler; // No print screen impl. there
     handlers[0x08] = bios_08h;
     handlers[0x09] = bios_09h;
     handlers[0x10] = bios_10h;
+    handlers[0x11] = bios_11h;
     handlers[0x12] = bios_12h;
     handlers[0x13] = bios_13h;
     handlers[0x14] = bios_14h;
     handlers[0x15] = bios_15h;
     handlers[0x16] = bios_16h;
+    handlers[0x17] = bios_17h;
     handlers[0x18] = bios_18h;
     handlers[0x19] = bios_19h;
     handlers[0x1A] = bios_1Ah;
     handlers[0x1C] = nop_handler; /* INT 1Ch: user timer tick hook — no-op until replaced by a TSR */
+    handlers[0x21] = nop_handler; // No DOS functions support on BIOS level
     return _cpu;
 }
 

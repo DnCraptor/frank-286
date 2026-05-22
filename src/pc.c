@@ -1186,6 +1186,14 @@ void load_bios_and_reset(PC *pc)
 	pstore16(0x41A, 0x001E);                             /* kbd buffer head */
 	pstore16(0x41C, 0x001E);                             /* kbd buffer tail */
 
+	/* Diskette BIOS work area.  INT 13h keeps the last FDD status here. */
+	pstore8 (0x43E, 0x00);                               /* diskette recalibration/status */
+	pstore8 (0x43F, 0x00);                               /* diskette motor status */
+	pstore8 (0x440, 0x00);                               /* diskette motor timeout */
+	pstore8 (0x441, 0x00);                               /* last diskette status */
+	for (uint32_t a = 0x442; a <= 0x448; ++a)
+		pstore8(a, 0x00);                                  /* FDC result/status bytes */
+
 	pstore8 (0x449, 0x03);                               /* current video mode */
 	pstore16(0x44A, 80);                                 /* columns */
 	pstore16(0x44C, 0x1000);                             /* video page size (4096, IBM AT std for mode 3) */
