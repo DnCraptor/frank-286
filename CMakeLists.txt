@@ -223,9 +223,11 @@ set(EMU_CORE_SOURCES
 
     # Internal BIOS
     src/bios/bios_00h.c
+    src/bios/bios_09h.c
     src/bios/bios_08h.c
     src/bios/bios_10h.c
     src/bios/bios_13h.c
+    src/bios/bios_16h.c
     src/bios/bios_18h.c
     src/bios/bios_19h.c
     src/bios/bios_1Ah.c
