@@ -8,6 +8,7 @@ bool bios_08h(); // IRQ0 timer tick
 bool bios_09h(); // IRQ1 keyboard
 bool bios_10h(); // VIDEO 
 bool bios_13h(); // DISK 
+bool bios_15h(); // TSR
 bool bios_16h(); // KEYBOARD
 bool bios_18h(); // Call internal Basic
 bool bios_19h(); // Bootstrap

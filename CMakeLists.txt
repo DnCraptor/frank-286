@@ -227,6 +227,7 @@ set(EMU_CORE_SOURCES
     src/bios/bios_08h.c
     src/bios/bios_10h.c
     src/bios/bios_13h.c
+    src/bios/bios_15h.c
     src/bios/bios_16h.c
     src/bios/bios_18h.c
     src/bios/bios_19h.c

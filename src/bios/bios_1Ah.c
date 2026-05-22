@@ -19,21 +19,6 @@
  *   All values are BCD as stored by the emulated MC146818.
  *   CMOS reg map: 00=sec, 02=min, 04=hour, 06=DOW, 07=day, 08=month, 09=year, 0x32=century
  */
-
-/* Read one CMOS register via I/O ports (matches what real BIOS does). */
-static inline uint8_t cmos_read(uint8_t reg)
-{
-    cpu_portout8(0x70, reg);
-    return cpu_portin8(0x71);
-}
-
-/* Write one CMOS register via I/O ports. */
-static inline void cmos_write(uint8_t reg, uint8_t val)
-{
-    cpu_portout8(0x70, reg);
-    cpu_portout8(0x71, val);
-}
-
 bool bios_1Ah(void)
 {
     switch (CPU_AH) {

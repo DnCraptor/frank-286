@@ -255,6 +255,20 @@ void i286_enable_fpu(i286 *);
 void i286_reset(i286 *cpu);
 void i286_reset_pm(i286 *cpu, uint32_t start_addr);
 
+/* Read one CMOS register via I/O ports (matches what real BIOS does). */
+static inline uint8_t cmos_read(uint8_t reg)
+{
+    cpu_portout8(0x70, reg);
+    return cpu_portin8(0x71);
+}
+
+/* Write one CMOS register via I/O ports. */
+static inline void cmos_write(uint8_t reg, uint8_t val)
+{
+    cpu_portout8(0x70, reg);
+    cpu_portout8(0x71, val);
+}
+
 inline static void print_char(char c, int char_row, int char_pos) {
     writew86(0xB8000 + char_row * 160 + char_pos * 2, 0x0F00 | c);
 }

@@ -1151,6 +1151,9 @@ void load_bios_and_reset(PC *pc)
 	i286_reset(pc->cpu);
 // POST
 	// TODO:
+	uint32_t ext_ram = phys_mem_size <= (1024 << 10) ? 0 : (phys_mem_size - (1024 << 10)) >> 10;
+	cmos_write(0x17, (uint8_t)(ext_ram & 0xFF)); // low byte extended memory KB
+	cmos_write(0x18, (uint8_t)((ext_ram >> 8) & 0xFF)); // high byte
 // init BDA
 	for (uint32_t a = 0x400; a < 0x500; ++a)
 		pstore8(a, 0);
