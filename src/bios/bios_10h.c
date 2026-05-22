@@ -2,6 +2,11 @@
 #include "i286.h"
 #include "bios.h"
 
+#define BIOS_FONT_SEG       0xF000
+#define BIOS_FONT8X16_OFF   0xA000
+#define BIOS_FONT8X14_OFF   0xB000
+#define BIOS_FONT8X8_OFF    0xBE00
+
 static bool no_handler() {
     print_line("VIDEO BIOS - ERROR: no handler defined", 1);
     char buf[10];
@@ -280,6 +285,75 @@ static bool bios_10h_0Eh() {
     return true;
 }
 
+/*
+VIDEO - GET FONT INFORMATION (EGA, MCGA, VGA)
+AX = 1130h
+BH = pointer specifier
+00h INT 1Fh pointer
+01h INT 43h pointer
+02h ROM 8x14 character font pointer
+03h ROM 8x8 double dot font pointer
+04h ROM 8x8 double dot font (high 128 characters)
+05h ROM alpha alternate (9 by 14) pointer (EGA,VGA)
+06h ROM 8x16 font (MCGA, VGA)
+07h ROM alternate 9x16 font (VGA only) (see #00021)
+
+Return:
+ES:BP = specified pointer
+CX    = bytes/character of on-screen font (not the requested font!)
+DL    = highest character row on screen
+*/
+static bool bios_10h_1130h() {
+    uint8_t spec = CPU_BH;
+    uint16_t off;
+
+    /*
+     * CX = bytes/character of current on-screen font,
+     * not necessarily of requested BH font.
+     *
+     * In your BDA init 40:85 = 16, so normal mode 03h reports 16.
+     */
+    CPU_CX = readw86(0x485);
+    if (CPU_CX == 0)
+        CPU_CX = 16;
+
+    /*
+     * DL = highest character row on screen.
+     * In normal 80x25 text mode this is 24.
+     */
+    CPU_DL = read86(0x484);
+    if (CPU_DL == 0)
+        CPU_DL = 24;
+
+    switch (spec) {
+        case 0x02: /* ROM 8x14 */
+        case 0x05: /* alternate 9x14: return same 8x14 raster */
+            off = BIOS_FONT8X14_OFF;
+            break;
+
+        case 0x03: /* ROM 8x8 */
+            off = BIOS_FONT8X8_OFF;
+            break;
+
+        case 0x04: /* ROM 8x8 high 128 characters */
+            off = BIOS_FONT8X8_OFF + 128u * 8u;
+            break;
+
+        case 0x00: /* INT 1Fh pointer */
+        case 0x01: /* INT 43h/current font pointer */
+        case 0x06: /* ROM 8x16 */
+        case 0x07: /* alternate 9x16: return same 8x16 raster */
+        default:
+            off = BIOS_FONT8X16_OFF;
+            break;
+    }
+
+    CPU_ES = BIOS_FONT_SEG;
+    CPU_BP = off;
+    cf = 0;
+    return true;
+}
+
 bool bios_10h() {
     switch(CPU_AH) {
         case 0x02:
@@ -287,10 +361,48 @@ bool bios_10h() {
         case 0x0E:
             return bios_10h_0Eh(); // TELETYPE OUTPUT
         default:
+            if (CPU_AX == 0x1130)
+                return bios_10h_1130h();
             no_handler();
         case 0x74: // ? HUNTER 16 - SET LCD WINDOWS POSITION
          // unsupported
     }
     cf = 1; // unsuported unknown function
     return true;
+}
+
+#include "font8x16.h"
+// TODO: other fonts 8x14, 8x8
+
+void bios_10h_install_rom_fonts(void)
+{
+    /*
+     * INT 10h/AX=1130h must return a guest-visible ES:BP pointer.
+     * Host pointers to font_8x16/vgafont16 are useless for DOS code,
+     * so copy compact ROM font tables into emulated F000:xxxx area.
+     *
+     * Source font is 8x16. 8x14 and 8x8 are derived minimally:
+     *   8x16: all 16 rows
+     *   8x14: rows 1..14
+     *   8x8 : rows 4..11
+     */
+    for (uint32_t ch = 0; ch < 256; ch++) {
+        for (uint32_t y = 0; y < 16; y++) {
+            write86(((uint32_t)BIOS_FONT_SEG << 4) +
+                    BIOS_FONT8X16_OFF + ch * 16 + y,
+                    font_8x16[ch * 16 + y]);
+        }
+
+        for (uint32_t y = 0; y < 14; y++) {
+            write86(((uint32_t)BIOS_FONT_SEG << 4) +
+                    BIOS_FONT8X14_OFF + ch * 14 + y,
+                    font_8x16[ch * 16 + y + 1]);
+        }
+
+        for (uint32_t y = 0; y < 8; y++) {
+            write86(((uint32_t)BIOS_FONT_SEG << 4) +
+                    BIOS_FONT8X8_OFF + ch * 8 + y,
+                    font_8x16[ch * 16 + y + 4]);
+        }
+    }
 }

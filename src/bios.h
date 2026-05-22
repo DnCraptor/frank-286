@@ -18,5 +18,6 @@ bool bios_19h(); // Bootstrap
 bool bios_1Ah(); // Time/Date services
 
 bool bios_16h_store_key(uint16_t ax); // shared with INT 9
+void bios_10h_install_rom_fonts(void); // INT 10h support
 
 #endif // BIOS_H

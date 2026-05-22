@@ -1281,7 +1281,8 @@ void load_bios_and_reset(PC *pc)
     pstore8 (table + 0x07, 0x00);   /* feature byte 3 */
     pstore8 (table + 0x08, 0x00);   /* feature byte 4 */
     pstore8 (table + 0x09, 0x00);   /* feature byte 5 */
-
+// INT 10h support:
+	bios_10h_install_rom_fonts();
 // Bootstrap
 	bios_19h();
 }
