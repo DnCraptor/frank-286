@@ -2,11 +2,6 @@
 #include "i286.h"
 #include "bios.h"
 
-// Cursor state
-extern int cursor_x, cursor_y;
-extern int cursor_start, cursor_end;
-extern int cursor_blink_state;
-
 static bool no_handler() {
     print_line("VIDEO BIOS - ERROR: no handler defined", 1);
     char buf[10];
@@ -24,6 +19,117 @@ static bool no_handler() {
     snprintf(buf, 10, "ES: %04xh", CPU_ES); print_line(buf, 12);
 while(1); // remove it
     return true;
+}
+
+/*
+ * Update hardware text-mode cursor through the VGA CRT Controller.
+ *
+ * IBM PC compatible VGA/MDA/CGA adapters store the cursor position
+ * inside CRTC registers:
+ *
+ *   index 0Eh = cursor location high byte
+ *   index 0Fh = cursor location low byte
+ *
+ * The cursor position is NOT stored as X/Y coordinates.
+ * Instead, hardware uses a linear character-cell index relative
+ * to the start of display memory.
+ *
+ * Example for standard 80x25 text mode:
+ *
+ *   row 0 col 0  -> position 0
+ *   row 0 col 1  -> position 1
+ *   row 1 col 0  -> position 80
+ *
+ * VGA text memory is organized as:
+ *
+ *   one character cell = 2 bytes
+ *     byte 0 = ASCII character
+ *     byte 1 = attribute/color
+ *
+ * BDA fields used:
+ *
+ *   40:4A = screen columns
+ *   40:4C = video page size in bytes
+ *   40:63 = CRTC base port
+ *
+ * Typical CRTC ports:
+ *
+ *   3D4h = color adapters (CGA/EGA/VGA)
+ *   3B4h = monochrome adapters (MDA/Hercules)
+ *
+ * page_size is measured in BYTES, while cursor position is measured
+ * in CHARACTER CELLS, therefore:
+ *
+ *   page_size / 2
+ *
+ * is used when converting page offset into character coordinates.
+ *
+ * Access protocol:
+ *
+ *   out(crtc, index)
+ *   out(crtc+1, value)
+ *
+ * This matches real VGA hardware programming.
+ */
+static void bios_10h_set_crtc_cursor(uint8_t page,
+                                     uint8_t row,
+                                     uint8_t col)
+{
+    if (page != read86(0x462)) return;
+    /*
+     * Number of text columns.
+     * Usually 80 in mode 03h.
+     */
+    uint16_t cols = readw86(0x44A);
+
+    /*
+     * Video page size in bytes.
+     * Standard VGA text page:
+     *   80 * 25 * 2 = 4000 bytes
+     * BIOS often rounds to 4096 (1000h).
+     */
+    uint16_t page_size = readw86(0x44C);
+
+    /*
+     * CRT controller I/O base port.
+     *
+     * 3D4h = color text modes
+     * 3B4h = monochrome
+     */
+    uint16_t crtc = readw86(0x463);
+
+    if (cols == 0)
+        cols = 80;
+
+    if (page_size == 0)
+        page_size = 0x1000;
+
+    if (crtc == 0)
+        crtc = 0x3D4;
+
+    /*
+     * Convert page-relative X/Y coordinates into
+     * absolute character-cell index.
+     *
+     * page_size is bytes -> divide by 2 because:
+     *   one text cell = 2 bytes
+     */
+    uint16_t pos =
+        (uint16_t)(page * (page_size / 2)) +
+        (uint16_t)row * cols +
+        col;
+
+    /*
+     * VGA_CRTC_CURSOR_HI (0Eh)
+     */
+    cpu_portout8(crtc, 0x0E);
+    cpu_portout8(crtc + 1, pos >> 8);
+
+    /*
+     * VGA_CRTC_CURSOR_LO (0Fh)
+     */
+    cpu_portout8(crtc, 0x0F);
+    cpu_portout8(crtc + 1, pos & 0xFF);
 }
 
 /*
@@ -52,14 +158,7 @@ static bool bios_10h_02h() {
      */
     cur = ((uint16_t)row << 8) | col;
     writew86(0x450 + ((uint16_t)page * 2), cur);
-
-    /*
-     * Update visible hardware cursor only for active page.
-     */
-    if (page == read86(0x462)) {
-        cursor_x = col;
-        cursor_y = row;
-    }
+    bios_10h_set_crtc_cursor(page, row, col);
     return true;
 }
 
@@ -177,8 +276,7 @@ static bool bios_10h_0Eh() {
 
     cur = ((uint16_t)row << 8) | col;
     writew86(0x450 + ((uint16_t)page * 2), cur);
-    cursor_x = col;
-    cursor_y = row;
+    bios_10h_set_crtc_cursor(page, row, col);
     return true;
 }
 
