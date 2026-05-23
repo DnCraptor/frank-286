@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include "i286.h"
 #include "bios.h"
 
@@ -44,7 +45,8 @@ iret
 
     pstore8(0xFFF06, 0xCF); // IRET
 */
-
+    { char buf[32]; snprintf(buf, sizeof(buf), "08h SS=%04x SP=%04x", CPU_SS, CPU_SP); print_line(buf, 13); }
+ 
     CPU_CS = 0xFFF0;
     CPU_IP = 0x0000;
 

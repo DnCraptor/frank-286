@@ -60,6 +60,13 @@ static char scan_to_ascii(uint8_t scan, bool shift, bool ctrl, bool caps)
 
 bool bios_09h(void)
 {
+    /* Check OBF (Output Buffer Full) in i8042 status register.
+     * If clear — spurious IRQ1, nothing to read. */
+    if (!(cpu_portin8(0x64) & 0x01)) {
+        cpu_portout8(0x20, 0x20);
+        return true;
+    }
+
     uint8_t code = cpu_portin8(0x60);
 
     if (code == 0xE0 || code == 0xE1) {
@@ -70,6 +77,10 @@ bool bios_09h(void)
 
     bool is_up = (code & 0x80u) != 0;
     uint8_t scan = code & 0x7Fu;
+    if (scan == 0) {
+        cpu_portout8(0x20, 0x20);
+        return true;
+    }    
     uint8_t flags = read86(BDA_KBD_FLAGS1);
 
     switch (scan) {
@@ -128,8 +139,8 @@ bool bios_09h(void)
 
         if (ext_prefix == 0xE0)
             ax = ((uint16_t)scan << 8); /* minimal: keep enhanced keys non-ASCII */
-
-        bios_16h_store_key(ax);
+        if (ax != 0)
+            bios_16h_store_key(ax);
     }
 
     ext_prefix = 0;

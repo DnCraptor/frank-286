@@ -569,12 +569,6 @@ void __not_in_flash_func(kbd_step)(void *opaque)
         kbd->delay = false;
         ps2_queue(&(kbd->common), kbd->delay_keycode);
     }
-#ifndef __wasm__
-    if (s->kbd->common.queue.count)
-        s->kbd->common.update_irq(s->kbd->common.update_arg, 1);
-    if (s->mouse->common.queue.count)
-        s->mouse->common.update_irq(s->mouse->common.update_arg, 1);
-#endif
 }
 
 uint32_t ps2_read_data(void *opaque)
