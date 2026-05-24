@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 bool bios_00h(); // Division by zero, etc...
+bool bios_05h(); // PRINT SCREEN / BOUND RANGE EXCEEDED
 bool bios_08h(); // IRQ0 timer tick
 bool bios_09h(); // IRQ1 keyboard
 bool bios_10h(); // VIDEO

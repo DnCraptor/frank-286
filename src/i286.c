@@ -580,7 +580,7 @@ i286* i286_new(CPU_CB* *cb) {
         handlers[i] = no_handler;
     }
     handlers[0x00] = bios_00h;
-    handlers[0x05] = nop_handler; // No print screen impl. there
+    handlers[0x05] = bios_05h; // No print screen impl. there
     handlers[0x08] = bios_08h;
     handlers[0x09] = bios_09h;
     handlers[0x10] = bios_10h;
@@ -603,7 +603,7 @@ void intcall86(uint8_t intnum) {
 //    if (intnum == 0x2F && _cpu->int2f_handler && _cpu->int2f_handler(_cpu, _cpu->int2f_opaque)) {
 //        return;
 //    }
-{
+if (intnum != 0x1C && intnum != 8) { // do not show timer
     char buf[10];
     snprintf(buf, 79, "INT %02Xh", intnum);
     print_line(buf, 0);
