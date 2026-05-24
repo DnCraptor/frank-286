@@ -1264,7 +1264,7 @@ void load_bios_and_reset(PC *pc)
     pstore8(0xFFF03, 0x20);
     pstore8(0xFFF04, 0xCD); // INT 1Ch
     pstore8(0xFFF05, 0x1C);
-    pstore8(0xFFF06, 0xCF); // IRET
+    pstore8(0xFFF06, 0xCF); // IRET 0xFFF0:0006 - reusable IRET
 // INT 15h support:
     const uint32_t table = 0xFFF10;
     pstore16(table + 0x00, 0x0008); /* number of bytes following */
