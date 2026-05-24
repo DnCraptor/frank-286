@@ -110,6 +110,11 @@ bool bios_16h(void)
         CPU_AL = bios_16h_store_key(((uint16_t)CPU_CH << 8) | CPU_CL) ? 0x00 : 0x01;
         return true;
 
+    case 0xFF: /* KBUF extensions: add key to tail, DX=scancode/key word */
+        CPU_AL = bios_16h_store_key(CPU_DX) ? 0x00 : 0x01;
+        cf = 0;
+        return true;
+
     case 0x12: /* get extended shift flags */
         CPU_AL = read86(BDA_KBD_FLAGS1);
         CPU_AH = read86(BDA_KBD_FLAGS2);
