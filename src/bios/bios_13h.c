@@ -655,33 +655,49 @@ static bool bios_13h_48h()
 }
 
 bool bios_13h() {
+    bool res = true;
     switch(CPU_AH) {
         case 0x00:
-            return bios_13h_00h(); // RESET DISK SYSTEM
+            res = bios_13h_00h(); // RESET DISK SYSTEM
+            break;
         case 0x01:
-            return bios_13h_01h(); // GET STATUS OF LAST OPERATION
+            res = bios_13h_01h(); // GET STATUS OF LAST OPERATION
+            break;
         case 0x02:
-            return bios_13h_02h(); // READ SECTOR(S) INTO MEMORY
+            res = bios_13h_02h(); // READ SECTOR(S) INTO MEMORY
+            break;
         case 0x03:
-            return bios_13h_03h(); // WRITE DISK SECTOR(S)
+            res = bios_13h_03h(); // WRITE DISK SECTOR(S)
+            break;
         case 0x04:
-            return bios_13h_04h(); // VERIFY DISK SECTOR(S)
+            res = bios_13h_04h(); // VERIFY DISK SECTOR(S)
+            break;
         case 0x08:
-            return bios_13h_08h(); // GET DRIVE PARAMETERS
+            res = bios_13h_08h(); // GET DRIVE PARAMETERS
+            break;
         case 0x0C:
-            return bios_13h_0Ch(); // SEEK TO CYLINDER
+            res = bios_13h_0Ch(); // SEEK TO CYLINDER
+            break;
         case 0x15:
-            return bios_13h_15h(); // GET DISK TYPE
+            res = bios_13h_15h(); // GET DISK TYPE
+            break;
         case 0x41:
-            return bios_13h_41h(); // EXTENSIONS INSTALLATION CHECK
+            res = bios_13h_41h(); // EXTENSIONS INSTALLATION CHECK
+            break;
         case 0x42:
-            return bios_13h_42h(); // EXTENDED READ
+            res = bios_13h_42h(); // EXTENDED READ
+            break;
         case 0x43:
-            return bios_13h_43h(); // EXTENDED WRITE
+            res = bios_13h_43h(); // EXTENDED WRITE
+            break;
         case 0x48:
-            return bios_13h_48h(); // GET EXTENDED DRIVE PARAMETERS
+            res = bios_13h_48h(); // GET EXTENDED DRIVE PARAMETERS
+            break;
         default:
             no_handler();
     }
-    return true;
+    if (!res) {
+        CPU_IP += 1;
+    }
+    return res;
 }

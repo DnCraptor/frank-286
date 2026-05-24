@@ -17,5 +17,6 @@ bool bios_05h(void) {
         return true;
     }
     print_line("BOUND EXCEPTION", 23);
+    CPU_IP += 1;
     return false; // bound exception, TODO: ???
 }
