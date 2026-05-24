@@ -22,7 +22,7 @@ INLINE static void portout16(u16 portnum, u16 v) {
     _cpu->cb.io_write16(_cpu->cb.io, portnum, v);
 }
 
-static int a20_enabled = 0;
+int a20_enabled = 0;
 
 void cpu_set_a20(i286* cpu, int v) {
     (void*)cpu;
@@ -1358,7 +1358,9 @@ void __not_in_flash() i286_step(i286* cpu, uint32_t execloops) {
                 CPU_IP = 0x0006;
                 CPU_CS = 0xFFF0; // reusable IRET (pc.c)
             }
-            // else - internal using INT in JMP style (INT 19h...)
+            else {// internal using INT in JMP style (INT 19h...)
+                continue; // to allow to recheck IRQ before next step
+            }
         }
         reptype = 0;
         segoverride = 0;

@@ -182,26 +182,31 @@ void getea(uint8_t rmval);
 #define likely(x) __builtin_expect(!!(x), 1)
 #define INLINE __always_inline
 
+extern int a20_enabled;
+static inline u32 cpu_a20_addr(u32 addr) {
+    return a20_enabled ? addr : (addr & 0x000FFFFF);
+}
+
 static inline u8 read86(const u32 address) {
-    return pload8(address);
+    return pload8(cpu_a20_addr(address));
 }
 static inline u16 readw86(const u32 address) {
-    return pload16(address);
+    return pload16(cpu_a20_addr(address));
 }
 static inline u32 readdw86(const u32 address) {
-    return pload32(address);
+    return pload32(cpu_a20_addr(address));
 }
 
 static inline void write86(const u32 address, u8 v) {
-    pstore8(address, v);
+    pstore8(cpu_a20_addr(address), v);
 }
 
 static inline void writew86(const u32 address, u16 v) {
-    pstore16(address, v);
+    pstore16(cpu_a20_addr(address), v);
 }
 
 static inline void writedw86(const u32 address, u32 v) {
-    pstore32(address, v);
+    pstore32(cpu_a20_addr(address), v);
 }
 
 int cpu_get_a20(i286* cpu);
