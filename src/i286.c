@@ -1344,7 +1344,16 @@ void __not_in_flash() i286_step(i286* cpu, uint32_t execloops) {
             if (rp2350_bios_handler(0xFFFF - CPU_IP)) { // normal flow IRET is expected
                 CPU_IP = pop();
                 CPU_CS = pop();
-                pop(); // ignore stack-saved flags for case C-BIOS processed request
+                // W/A TODO: in handlers
+                bool _zf = zf;
+                bool _cf = cf;
+#ifdef CPU_SET_HIGH_FLAGS
+                decodeflagsword(pop() | 0xF000);
+#else
+                decodeflagsword(pop() & 0x0FFF);
+#endif
+                zf = _zf;
+                cf = _cf;
             }
             // else - internal using INT in JMP style (INT 19h...)
         }
