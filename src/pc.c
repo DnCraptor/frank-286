@@ -1150,6 +1150,8 @@ void load_bios_and_reset(PC *pc)
 	sn76489_reset();
 	i286_reset(pc->cpu);
 // POST
+    CPU_SS = 0x0030;
+    CPU_SP = 0x0100;
 	// TODO:
 	uint32_t ext_ram = phys_mem_size <= (1024 << 10) ? 0 : (phys_mem_size - (1024 << 10)) >> 10;
 	cmos_write(0x17, (uint8_t)(ext_ram & 0xFF)); // low byte extended memory KB
@@ -1252,10 +1254,10 @@ void load_bios_and_reset(PC *pc)
 	i8254_ioport_write(pc->pit, 0x40, 0x00);
 	i8254_ioport_write(pc->pit, 0x40, 0x00);
 
-// init IVT
+// init IVT: fake processing markers: 0xFFExx
     for (uint16_t ipa = 0; ipa <= 0xFF; ++ipa) {
-		pstore16(ipa*4, 0xFFFF - ipa);
-		pstore16(ipa*4 + 2, 0xFFFF);
+		pstore16(ipa*4, ipa);
+		pstore16(ipa*4 + 2, 0xFFE0);
 	}
 // Timer specific W/A
     pstore8(0xFFF00, 0xB0); // MOV AL, 20h

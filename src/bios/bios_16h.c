@@ -78,18 +78,14 @@ bool bios_16h(void)
     switch (CPU_AH) {
     case 0x00: /* read keystroke */
     case 0x10: /* enhanced read keystroke */
-        if (kbd_empty()) {
-            /* Set IF=1 in the flags word already pushed on stack by intcall86,
-             * so that after any IRQ's IRET we still have interrupts enabled. */
-            uint32_t sp_phys = ((uint32_t)CPU_SS << 4) + (uint16_t)CPU_SP;
-            writew86(sp_phys + 4, readw86(sp_phys + 4) | 0x0200); /* IF bit */
-            ifl = 1; /* allow IRQs while waiting for keypress */
-            return false; /* block: re-enter handler next CPU step */
-        }
         { char buf[64]; snprintf(buf, sizeof(buf), "pop h=%04x t=%04x s=%04x e=%04x v=%04x",
             readw86(BDA_KBD_HEAD), readw86(BDA_KBD_TAIL),
             readw86(BDA_KBD_START), readw86(BDA_KBD_END),
             readw86(BDA_BASE + readw86(BDA_KBD_HEAD))); print_line(buf, 14); }
+
+        if (kbd_empty()) {
+            return false; /* block: re-enter handler next CPU step */
+        }
 
         CPU_AX = kbd_pop();
         cf = 0;

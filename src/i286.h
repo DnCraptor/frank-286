@@ -280,4 +280,10 @@ inline static void print_line(const char* s, int row) {
     }
 }
 
+// 0xFFE00..0xFFEFF
+inline static bool fake_bios_area() {
+    u32 ip32 = (((u32)CPU_CS << 4) + CPU_IP) >> 8;
+    return ip32 == 0xFFE;
+}
+
 #endif // I286_H

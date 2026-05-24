@@ -551,12 +551,17 @@ typedef bool (*handler_t)();
 static handler_t handlers[256];
 static bool rp2350_bios_handler(uint8_t intnum) {
     bool normal_iret_flow = handlers[intnum]();
+    uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
     if (normal_iret_flow) {
         // patch FLAGS to be returnable by IRET
-        uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
         flags_on_stack = (flags_on_stack & ~0x0041) // reset ZF, CF
                        | (x86_flags.value & 0x0041); // set them back from CPU
         putmem16(CPU_SS, CPU_SP + 4, flags_on_stack);
+    } else {
+        /* Set IF=1 in the flags word already pushed on stack by intcall86,
+         * so that after any IRQ's IRET we still have interrupts enabled. */
+        putmem16(CPU_SS, CPU_SP + 4, flags_on_stack | 0x0200); /* IF bit */
+        ifl = 1; /* allow IRQs while waiting for keypress */
     }
     return normal_iret_flow;
 }
@@ -1348,8 +1353,8 @@ void __not_in_flash() i286_step(i286* cpu, uint32_t execloops) {
                 }
             }
         }        
-        if (CPU_CS == 0xFFFF && CPU_IP >= 0xFF00) {
-            if (rp2350_bios_handler(0xFFFF - CPU_IP)) { // normal flow IRET is expected
+        if (fake_bios_area()) {
+            if (rp2350_bios_handler(CPU_IP)) { // normal flow IRET is expected
                 CPU_IP = 0x0006;
                 CPU_CS = 0xFFF0; // reusable IRET (pc.c)
             }

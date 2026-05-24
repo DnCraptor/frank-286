@@ -12,7 +12,7 @@ Since the BOUND instruction also calls INT 05h, but returns control to the BOUND
 infinite loop of PrtScreens unless the INT 05 handler is aware of the problem and checks whether the interrupt was invoked by a BOUND instruction
 */
 bool bios_05h(void) {
-    if (CPU_CS == 0xFFFF && CPU_IP >= 0xFF00) { // print screen
+    if (fake_bios_area()) { // print screen
         pstore8(0x500, 0xFF); // error on the attempt
         return true;
     }
