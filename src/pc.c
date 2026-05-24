@@ -1280,6 +1280,42 @@ void load_bios_and_reset(PC *pc)
     pstore8 (table + 0x09, 0x00);   /* feature byte 5 */
 // INT 10h support:
 	bios_10h_install_rom_fonts();
+// BIOS banner:
+{
+    const char *banner = "RP2350 PC AT BIOS";
+    const uint8_t attr = 0x61; // bg=yellow(6), fg=blue(1)
+    const uint8_t row  = 0;
+    const uint8_t cols = 80;
+    const uint8_t len  = 17;
+    const uint8_t col  = (cols - len) / 2; // 31
+
+    // Set 80x25 color text mode
+    CPU_AH = 0x00; CPU_AL = 0x03;
+    bios_10h();
+
+    // Fill full row 0 with spaces using banner attribute
+    CPU_AH = 0x02; CPU_BH = 0x00; CPU_DH = row; CPU_DL = 0x00;
+    bios_10h();
+
+    CPU_AH = 0x09; CPU_AL = ' '; CPU_BH = 0x00; CPU_BL = attr; CPU_CX = cols;
+    bios_10h();
+
+    // Move cursor to centered banner position
+    CPU_AH = 0x02; CPU_BH = 0x00; CPU_DH = row; CPU_DL = col; bios_10h();
+
+    // Print banner via INT 10h-style BIOS service
+    for (const char *p = banner; *p; ++p) {
+        CPU_AH = 0x09; CPU_AL = (uint8_t)*p; CPU_BH = 0x00; CPU_BL = attr; CPU_CX = 1;
+        bios_10h();
+
+        CPU_AH = 0x02; CPU_BH = 0x00; CPU_DH = row; CPU_DL++;
+		bios_10h();
+    }
+
+    // Move cursor to row 1, col 0
+    CPU_AH = 0x02; CPU_BH = 0x00; CPU_DH = 0x01; CPU_DL = 0x00;
+    bios_10h();
+}
 // Bootstrap
 	bios_19h();
 }
