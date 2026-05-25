@@ -20,5 +20,6 @@ bool bios_1Ah(); // Time/Date services
 
 bool bios_16h_store_key(uint16_t ax); // shared with INT 9
 void bios_10h_install_rom_fonts(void); // INT 10h support
+void install_floppy_dpt(void); // INT 13h support
 
 #endif // BIOS_H

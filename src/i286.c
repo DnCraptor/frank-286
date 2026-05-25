@@ -611,9 +611,9 @@ void intcall86(uint8_t intnum) {
 //    }
 if (intnum != 0x1C && intnum != 8) { // do not show timer
     char buf[80];
-    u16 cs = CPU_CS;
-    u16 ip16 = CPU_IP;
-    snprintf(buf, 79, "INT %02Xh DOS? %04X:%04X", intnum, cs, ip16);
+    u16 new_cs = getmem16(0, (uint16_t) intnum * 4 + 2);
+    u16 new_ip = getmem16(0, (uint16_t) intnum * 4);
+    snprintf(buf, 79, "INT %02Xh DOS? %04X:%04X->%04X:%04X AX:%04X", intnum, CPU_CS, CPU_IP, new_cs, new_ip, CPU_AX);
     print_line(buf, 0);
 }
     push(makeflagsword());

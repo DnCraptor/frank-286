@@ -348,6 +348,28 @@ static bool bios_13h_04h()
     return int13_rw_chs(0, 1);
 }
 
+// В load_bios_and_reset() — один раз разместить таблицу в ROM-области:
+#define FLOPPY_DPT_ADDR  0xFFF20u   // свободное место после config table (0xFFF10+10)
+
+void install_floppy_dpt(void) {
+    // Diskette Parameter Table — INT 1Eh standard format
+    pstore8(FLOPPY_DPT_ADDR + 0, 0xDF); // specify 1: SRT=0xD, HUT=0xF
+    pstore8(FLOPPY_DPT_ADDR + 1, 0x02); // specify 2: HLT=1, DMA=0
+    pstore8(FLOPPY_DPT_ADDR + 2, 0x25); // motor off delay (ticks)
+    pstore8(FLOPPY_DPT_ADDR + 3, 0x02); // bytes per sector: 2 = 512
+    pstore8(FLOPPY_DPT_ADDR + 4, 0x12); // sectors per track: 18 (1.44M)
+    pstore8(FLOPPY_DPT_ADDR + 5, 0x1B); // gap length
+    pstore8(FLOPPY_DPT_ADDR + 6, 0xFF); // data length
+    pstore8(FLOPPY_DPT_ADDR + 7, 0x6C); // gap length for format
+    pstore8(FLOPPY_DPT_ADDR + 8, 0xF6); // fill byte for format
+    pstore8(FLOPPY_DPT_ADDR + 9, 0x0F); // head settle time (ms)
+    pstore8(FLOPPY_DPT_ADDR +10, 0x08); // motor start time (1/8 sec)
+
+    // Вектор INT 1Eh должен указывать на эту таблицу
+    pstore16(0x1E * 4,     FLOPPY_DPT_ADDR & 0x000F);        // IP/offset
+    pstore16(0x1E * 4 + 2, (FLOPPY_DPT_ADDR >> 4) & 0xFFFF); // CS/segment
+}
+
 /*
 DISK - GET DRIVE PARAMETERS
 AH = 08h
@@ -362,7 +384,7 @@ CL bits 6-7 = cylinder bits 8-9
 DH = maximum head number
 DL = number of drives of this type
 BL = diskette drive type for floppy drives, if known
-ES:DI -> diskette parameter table for floppy drives, optional here
+ES:DI -> diskette parameter table for floppy drives
 */
 static bool bios_13h_08h()
 {
@@ -390,8 +412,8 @@ static bool bios_13h_08h()
         CPU_BL = 0x04;    /* 1.44M type as a conservative default for inserted images. */
     }
 
-    CPU_ES = 0x0000;
-    CPU_DI = 0x0000;
+    CPU_ES = (FLOPPY_DPT_ADDR >> 4) & 0xFFFF;
+    CPU_DI = FLOPPY_DPT_ADDR & 0x000F;
     int13_set_status(drive, INT13_ST_OK);
     return true;
 }

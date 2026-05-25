@@ -1280,6 +1280,8 @@ void load_bios_and_reset(PC *pc)
     pstore8 (table + 0x09, 0x00);   /* feature byte 5 */
 // INT 10h support:
 	bios_10h_install_rom_fonts();
+// INT 13h support: 0xFFF20-0xFFF30
+	install_floppy_dpt();
 // BIOS banner:
 {
     const char *banner = "RP2350 PC AT BIOS";
