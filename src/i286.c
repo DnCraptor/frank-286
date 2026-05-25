@@ -550,7 +550,17 @@ while(1); // remove it
 typedef bool (*handler_t)();
 static handler_t handlers[256];
 static bool rp2350_bios_handler(uint8_t intnum) {
+
+if (intnum != 0x1C && intnum != 8) { // do not show timer
     print_line2("BIOS", 0, 8);
+    /*
+    char buf[80];
+    u16 new_cs = getmem16(0, (uint16_t) intnum * 4 + 2);
+    u16 new_ip = getmem16(0, (uint16_t) intnum * 4);
+    snprintf(buf, 79, "INT %02Xh BIOS %04X:%04X->%04X:%04X AX:%04X", intnum, CPU_CS, CPU_IP, new_cs, new_ip, CPU_AX);
+    print_line(buf, 0);
+    */
+}
     bool normal_iret_flow = handlers[intnum]();
     uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
     if (normal_iret_flow) {

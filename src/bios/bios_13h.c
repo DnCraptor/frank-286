@@ -716,7 +716,7 @@ bool bios_13h() {
             res = bios_13h_48h(); // GET EXTENDED DRIVE PARAMETERS
             break;
         default:
-            //no_handler();
+            no_handler();
             cf = 1;
             CPU_AH = 0x86;
     }

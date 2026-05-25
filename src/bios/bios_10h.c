@@ -442,6 +442,20 @@ static void vga_program_regs(const VgaRegs *r, uint16_t crtc_base)
     cpu_portout8(0x3C0, 0x20);
 }
 
+/*
+VIDEO - SET VIDEO MODE
+AH = 00h
+AL = desired video mode (see #00010)
+
+Return:
+AL = video mode flag (Phoenix, AMI BIOS)
+20h mode > 7
+30h modes 0-5 and 7
+3Fh mode 6
+AL = CRT controller mode byte (Phoenix 386 BIOS v1.10)
+
+Desc: Specify the display mode for the currently active display adapter
+*/
 static bool bios_10h_00h(void)
 {
     uint8_t raw_mode = CPU_AL;
@@ -450,6 +464,7 @@ static bool bios_10h_00h(void)
 
     const VgaMode *m = vga_find_mode(mode);
     if (!m) {
+no_handler(); // stop there
         cf = 1;
         return true;
     }
@@ -529,7 +544,7 @@ static bool bios_10h_01h(void)
     }
     
     /* Save raw CH:CL in BDA 0x460 (what AH=03h returns) */
-    writew86(0x460, ((uint16_t)ch_raw << 8) | cl);
+    writew86(0x460, ((uint16_t)ch_raw << 8) | (CPU_CL & 0x1F));
 
     /* Program CRTC */
     uint16_t crtc = readw86(0x463);
@@ -864,7 +879,7 @@ static bool bios_10h_1130h() {
 bool bios_10h() {
     switch(CPU_AH) {
         case 0x00:
-            return bios_10h_00h(); // 
+            return bios_10h_00h(); // SET VIDEO MODE
         case 0x01:
             return bios_10h_01h(); // SET CURSOR SHAPE
         case 0x02:

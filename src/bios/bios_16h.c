@@ -84,8 +84,10 @@ bool bios_16h(void)
             uint16_t flags_on_stack = readw86((CPU_SS << 4) + CPU_SP + 4);
             writew86((CPU_SS << 4) + CPU_SP + 4, flags_on_stack | 0x0200); /* IF bit */
             ifl = 1; /* allow IRQs while waiting for keypress */
+            print_line("KBD BLOCK ENTER", 15);
             return false;
         }
+        print_line("KBD BLOCK EXIT ", 15);
         { char buf[64]; snprintf(buf, sizeof(buf), "pop h=%04x t=%04x s=%04x e=%04x v=%04x",
             readw86(BDA_KBD_HEAD), readw86(BDA_KBD_TAIL),
             readw86(BDA_KBD_START), readw86(BDA_KBD_END),
