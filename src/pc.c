@@ -1145,6 +1145,42 @@ PC *pc_new(void (*poll)(void *), void *redraw_data, u8 *fb, PCConfig *conf)
 	return pc;
 }
 
+static void install_hdd_dpt(PC *pc, int idx, uint32_t addr)
+{
+    // Вектор INT 41h = 0x104, INT 46h = 0x118
+    uint32_t vec = (idx == 0) ? 0x41 * 4 : 0x46 * 4;
+
+    if (!ata_is_inserted(idx) || ata_is_cdrom(idx)) {
+        // Нет диска — вектор указывает на нули, не на fake BIOS
+        // Просто обнулить таблицу и поставить вектор
+        for (int i = 0; i < 16; i++)
+            pstore8(addr + i, 0x00);
+    } else {
+        uint16_t cyls  = ata_get_cyls(idx);
+        uint16_t heads = ata_get_heads(idx);
+        uint16_t sects = ata_get_sects(idx);
+
+        // Fixed Disk Parameter Table, 16 bytes (INT 41h/46h format)
+        pstore16(addr + 0x00, cyls);          /* max cylinders */
+        pstore8 (addr + 0x02, (uint8_t)heads);/* max heads */
+        pstore8 (addr + 0x03, 0x00);          /* reserved (XT: starting reduced write current cyl low) */
+        pstore8 (addr + 0x04, 0x00);          /* reserved (XT: starting reduced write current cyl high) */
+        pstore16(addr + 0x05, 0x0000);        /* starting write precompensation cylinder */
+        pstore8 (addr + 0x07, 0x00);          /* max ECC burst length */
+        pstore8 (addr + 0x08, 0xC8);          /* drive control: disable retries on error + ECC */
+        pstore8 (addr + 0x09, 0x00);          /* reserved */
+        pstore8 (addr + 0x0A, 0x00);          /* reserved */
+        pstore8 (addr + 0x0B, 0x00);          /* reserved */
+        pstore16(addr + 0x0C, cyls);          /* landing zone cylinder */
+        pstore8 (addr + 0x0E, (uint8_t)sects);/* sectors per track */
+        pstore8 (addr + 0x0F, 0x00);          /* reserved */
+    }
+
+    // Вектор → таблица (в любом случае, даже если нули)
+    pstore16(vec,     (uint16_t)(addr & 0x000F));         /* offset */
+    pstore16(vec + 2, (uint16_t)((addr >> 4) & 0xFFFF)); /* segment */
+}
+
 void load_bios_and_reset(PC *pc)
 {
 	sn76489_reset();
@@ -1282,6 +1318,9 @@ void load_bios_and_reset(PC *pc)
 	bios_10h_install_rom_fonts();
 // INT 13h support: 0xFFF20-0xFFF30
 	install_floppy_dpt();
+// INT 41h/46h support: 0xFFF30-0xFFF4F
+    install_hdd_dpt(pc, 0, 0xFFF30);  // INT 41h → первый HDD
+    install_hdd_dpt(pc, 1, 0xFFF40);  // INT 46h → второй HDD
 // BIOS banner:
 {
     const char *banner = "RP2350 PC AT BIOS";
