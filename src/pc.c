@@ -1145,6 +1145,40 @@ PC *pc_new(void (*poll)(void *), void *redraw_data, u8 *fb, PCConfig *conf)
 	return pc;
 }
 
+static void install_dpte(int idx, uint32_t addr)
+{
+    // Primary IDE: 0x1F0, Secondary: 0x170
+    uint16_t iobase  = (idx < 2) ? 0x01F0 : 0x0170;
+    uint16_t ctlbase = (idx < 2) ? 0x03F6 : 0x0376;
+    uint8_t  devhead = (idx & 1) ? 0xB0 : 0xA0; // slave/master
+
+    uint8_t buf[16] = {0};
+    buf[0]  = (uint8_t)(iobase & 0xFF);
+    buf[1]  = (uint8_t)(iobase >> 8);
+    buf[2]  = (uint8_t)(ctlbase & 0xFF);
+    buf[3]  = (uint8_t)(ctlbase >> 8);
+    buf[4]  = devhead;
+    buf[5]  = 0x00;   // vendor
+    buf[6]  = 0x00;   // flags
+    buf[7]  = 0x00;   // PIO mode
+    buf[8]  = 0x00;   // DMA
+    buf[9]  = 0x00;   // timing
+    buf[10] = 0x00;
+    buf[11] = 0x00;   // DMA channel
+    buf[12] = 0x00;
+    buf[13] = 0x00;
+    buf[14] = 0x00;
+    buf[15] = 0x00;   // checksum placeholder
+
+    // checksum: сумма байт 0..14, результат = (-sum) & 0xFF
+    uint8_t sum = 0;
+    for (int i = 0; i < 15; i++) sum += buf[i];
+    buf[15] = (uint8_t)((-sum) & 0xFF);
+
+    for (int i = 0; i < 16; i++)
+        pstore8(addr + i, buf[i]);
+}
+
 static void install_hdd_dpt(PC *pc, int idx, uint32_t addr)
 {
     // Вектор INT 41h = 0x104, INT 46h = 0x118
@@ -1339,6 +1373,8 @@ void load_bios_and_reset(PC *pc)
 // INT 41h/46h support: 0xFFF30-0xFFF4F
     install_hdd_dpt(pc, 0, 0xFFF30);  // INT 41h → первый HDD
     install_hdd_dpt(pc, 1, 0xFFF40);  // INT 46h → второй HDD
+	install_dpte(0, DPTE_ADDR_0);
+	install_dpte(1, DPTE_ADDR_1);
 // BIOS banner:
 {
     const char *banner = "RP2350 PC AT BIOS";

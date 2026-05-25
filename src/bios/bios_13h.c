@@ -29,9 +29,9 @@
  *   CX bit 2: AH=48h extended drive parameter table is available.
  * AH=48h returns a 26-byte v2.x-compatible parameter table.
  */
-#define INT13_EDD_VERSION       0x21u
-#define INT13_EDD_FEATURES      0x0005u
-#define INT13_EDD_PARAM_SIZE    0x001Au
+#define INT13_EDD_VERSION    0x30u
+#define INT13_EDD_FEATURES   0x0005u
+#define INT13_EDD_PARAM_SIZE 0x42u
 
 typedef struct BiosDisk_s {
     FIL *f;
@@ -407,13 +407,15 @@ static bool bios_13h_08h()
 
     if (drive & 0x80) {
         CPU_DL = pload8(BDA_HDD_COUNT);
+        CPU_ES = 0x0000;
+        CPU_DI = 0x0000;
     } else {
         CPU_DL = 2;       /* BDA equipment word currently advertises two floppy drives. */
         CPU_BL = 0x04;    /* 1.44M type as a conservative default for inserted images. */
+        CPU_ES = (FLOPPY_DPT_ADDR >> 4) & 0xFFFF;
+        CPU_DI = FLOPPY_DPT_ADDR & 0x000F;
     }
 
-    CPU_ES = (FLOPPY_DPT_ADDR >> 4) & 0xFFFF;
-    CPU_DI = FLOPPY_DPT_ADDR & 0x000F;
     int13_set_status(drive, INT13_ST_OK);
     return true;
 }
@@ -647,31 +649,89 @@ IDE parameter table here.
 static bool bios_13h_48h()
 {
     BiosDisk d;
-    uint8_t drive = CPU_DL;
-    uint32_t p = ((uint32_t)CPU_DS << 4) + CPU_SI;
-    uint16_t caller_size = pload16(p + 0);
+    uint8_t  drive = CPU_DL;
+    uint32_t p     = ((uint32_t)CPU_DS << 4) + CPU_SI;
+    uint16_t caller_size = pload16(p);
 
     if (!(drive & 0x80) || !int13_get_disk(drive, &d)) {
         int13_set_status(drive, INT13_ST_TIMEOUT);
         return true;
     }
-
-    if (caller_size < INT13_EDD_PARAM_SIZE) {
+    if ((drive & 0x7F) > 1) {
+        /* DPTE только для 0x80 и 0x81; остальные не поддерживаются */
+        int13_set_status(drive, INT13_ST_BAD_COMMAND);
+        return true;
+    }
+    if (caller_size < 0x1A) {
         int13_set_status(drive, INT13_ST_BAD_COMMAND);
         return true;
     }
 
-    uint32_t total = int13_total_sectors(&d);
+    uint32_t total      = int13_total_sectors(&d);
+    uint16_t info_flags = 0x0002;               // geometry valid
+    if (d.cyls > 1023) info_flags |= 0x0004;    // may be truncated
 
-    pstore16(p + 0, INT13_EDD_PARAM_SIZE);
-    pstore16(p + 2, 0x0000);              /* information flags: no removable/media-change/DMA claims */
-    pstore32(p + 4, d.cyls);
-    pstore32(p + 8, d.heads);
-    pstore32(p + 12, d.sects);
-    pstore32(p + 16, total);              /* total sectors low dword */
-    pstore32(p + 20, 0x00000000);         /* total sectors high dword */
-    pstore16(p + 24, 512);                /* bytes per sector */
+    // --- v1.x / v2.x часть (0x1A байт) ---
+    uint16_t ret_size = 0x1A;
+    pstore16(p + 0x00, 0x1A);          // временно, обновим в конце
+    pstore16(p + 0x02, info_flags);
+    pstore32(p + 0x04, d.cyls);
+    pstore32(p + 0x08, d.heads);
+    pstore32(p + 0x0C, d.sects);
+    pstore32(p + 0x10, total);         // total sectors low
+    pstore32(p + 0x14, 0x00000000);    // total sectors high
+    pstore16(p + 0x18, 512);           // bytes per sector
 
+    // --- v2.x DPTE pointer (0x1E байт) ---
+    if (caller_size >= 0x1E) {
+        ret_size = 0x1E;
+        uint32_t dpte_addr = ((drive & 0x7F) == 0) ? DPTE_ADDR_0 : DPTE_ADDR_1;
+        pstore16(p + 0x1A, (uint16_t)(dpte_addr & 0x000F));          // offset
+        pstore16(p + 0x1C, (uint16_t)((dpte_addr >> 4) & 0xFFFF));   // segment
+    }
+
+    // --- v3.0 Device Path (0x42 байт) ---
+    if (caller_size >= 0x42) {
+        ret_size = 0x42;
+
+        pstore16(p + 0x1E, 0xBEDD);    // key
+        pstore8 (p + 0x20, 0x22);      // device path info length = 34 байт (от +20h до +41h включительно)
+        pstore8 (p + 0x21, 0x00);      // reserved
+        pstore16(p + 0x22, 0x0000);    // reserved
+
+        // host bus type: "ISA     " (8 байт, дополнить пробелами)
+        const char *bus = "ISA     ";
+        for (int i = 0; i < 8; i++)
+            pstore8(p + 0x24 + i, (uint8_t)bus[i]);
+
+        // interface type: "ATA     " (8 байт)
+        const char *iface = "ATA     ";
+        for (int i = 0; i < 8; i++)
+            pstore8(p + 0x2C + i, (uint8_t)iface[i]);
+
+        // interface path (8 байт): I/O base для ISA ATA
+        // primary = 0x1F0, secondary = 0x170
+        uint16_t iobase = ((drive & 0x7F) < 2) ? 0x01F0 : 0x0170;
+        pstore16(p + 0x34, iobase);
+        pstore32(p + 0x36, 0x00000000);
+        pstore16(p + 0x3A, 0x0000);
+
+        // device path (8 байт): device number (0=master, 1=slave)
+        uint8_t devnum = (drive & 1) ? 1 : 0;
+        pstore8 (p + 0x3C, devnum);
+        pstore8 (p + 0x3D, 0x00);
+        pstore32(p + 0x3E, 0x00000000);
+        pstore16(p + 0x40, 0x0000);
+
+        // checksum: сумма байт от +1Eh до +40h (без байта checksum), результат = (-sum) & 0xFF
+        // записывается в +41h — последний байт буфера 0x42
+        uint8_t sum = 0;
+        for (uint32_t i = 0x1E; i < 0x41; i++)
+            sum += pload8(p + i);
+        pstore8(p + 0x41, (uint8_t)((-sum) & 0xFF));  // +41h = последний байт
+    }
+
+    pstore16(p + 0x00, ret_size);  // финальный размер
     int13_set_status(drive, INT13_ST_OK);
     return true;
 }
