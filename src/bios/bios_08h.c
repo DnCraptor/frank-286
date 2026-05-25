@@ -30,21 +30,10 @@ bool bios_08h(void)
 
     /* 3: chain to INT 1Ch (user tick hook)
     Moved to: void load_bios_and_reset(PC *pc)
-int 1Ch
-out 20h, 20h
-iret    
-    pstore8(0xFFF00, 0xCD); // INT imm8
-    pstore8(0xFFF01, 0x1C);
-
-    pstore8(0xFFF02, 0xB0); // MOV AL,20h
-    pstore8(0xFFF03, 0x20);
-
-    /* 4: Non-Specific EOI to master PIC * /
-    pstore8(0xFFF04, 0xE6); // OUT 20h,AL
-    pstore8(0xFFF05, 0x20);
-
-    pstore8(0xFFF06, 0xCF); // IRET
-*/
+    int 1Ch
+    out 20h, 20h
+    iret    
+    */
 //    { char buf[32]; snprintf(buf, sizeof(buf), "08h SS=%04x SP=%04x", CPU_SS, CPU_SP); print_line(buf, 13); }
  
     CPU_CS = 0xFFF0;

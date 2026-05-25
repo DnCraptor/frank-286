@@ -1150,8 +1150,8 @@ void load_bios_and_reset(PC *pc)
 	sn76489_reset();
 	i286_reset(pc->cpu);
 // POST
-    CPU_SS = 0x0030;
-    CPU_SP = 0x0100;
+    CPU_SS = 0x0000;
+    CPU_SP = 0x7C00;
 	// TODO:
 	uint32_t ext_ram = phys_mem_size <= (1024 << 10) ? 0 : (phys_mem_size - (1024 << 10)) >> 10;
 	cmos_write(0x17, (uint8_t)(ext_ram & 0xFF)); // low byte extended memory KB
@@ -1260,12 +1260,12 @@ void load_bios_and_reset(PC *pc)
 		pstore16(ipa*4 + 2, 0xFFE0);
 	}
 // Timer specific W/A
-    pstore8(0xFFF00, 0xB0); // MOV AL, 20h
-    pstore8(0xFFF01, 0x20);
-    pstore8(0xFFF02, 0xE6); // OUT 20h, AL  <- EOI до INT 1Ch
+    pstore8(0xFFF00, 0xCD); // INT 1Ch
+    pstore8(0xFFF01, 0x1C);
+    pstore8(0xFFF02, 0xB0); // MOV AL, 20h
     pstore8(0xFFF03, 0x20);
-    pstore8(0xFFF04, 0xCD); // INT 1Ch
-    pstore8(0xFFF05, 0x1C);
+    pstore8(0xFFF04, 0xE6); // OUT 20h, AL  <- EOI до INT 1Ch
+    pstore8(0xFFF05, 0x20);
     pstore8(0xFFF06, 0xCF); // IRET 0xFFF0:0006 - reusable IRET
 // INT 15h support:
     const uint32_t table = 0xFFF10;
