@@ -558,6 +558,9 @@ static bool rp2350_bios_handler(uint8_t intnum) {
                        | (x86_flags.value & 0x0041); // set them back from CPU
         putmem16(CPU_SS, CPU_SP + 4, flags_on_stack);
     } else {
+        // should be processed on exact handler side, no common logic for this
+        // some handlers should turn IF = 1, some - not
+        // some patch stack, other - not
     }
     return normal_iret_flow;
 }
@@ -584,6 +587,7 @@ i286* i286_new(CPU_CB* *cb) {
     handlers[0x05] = bios_05h; // No print screen impl. there
     handlers[0x08] = bios_08h;
     handlers[0x09] = bios_09h;
+    handlers[0x0F] = nop_handler; // no IRQ7 - PARALLEL PRINTER handler
     handlers[0x10] = bios_10h;
     handlers[0x11] = bios_11h;
     handlers[0x12] = bios_12h;
@@ -1341,12 +1345,15 @@ void __not_in_flash() i286_step(i286* cpu, uint32_t execloops) {
     //tickssource();
     for (uint32_t loopcount = 0; loopcount < execloops; loopcount++) {
         if (unlikely(ifl && irq_pending)) {
-            irq_pending = 0;
-            if (cpu->cb.pic && cpu->cb.pic_read_irq) {
-                int intno = cpu->cb.pic_read_irq(cpu->cb.pic);
-                if (intno >= 0) {
+            int intno = cpu->cb.pic_read_irq(cpu->cb.pic);
+            if (intno >= 0) {
+                if (intno != 0x0F && intno != 0x77) {
+                    // реальный IRQ — обрабатываем
                     intcall86((uint8_t)intno);
                 }
+                // spurious (0x0F / 0x77) — просто игнорируем, не сбрасываем флаг
+            } else {
+                irq_pending = 0;
             }
         }        
         if (fake_bios_area()) {
