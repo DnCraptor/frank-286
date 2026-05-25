@@ -18,5 +18,10 @@ bool bios_05h(void) {
     }
     print_line("BOUND EXCEPTION", 23);
     CPU_IP += 1;
+    /* Set IF=1 in the flags word already pushed on stack by intcall86,
+     * so that after any IRQ's IRET we still have interrupts enabled. */
+    uint16_t flags_on_stack = readw86((CPU_SS << 4) + CPU_SP + 4);
+    writew86((CPU_SS << 4) + CPU_SP + 4, flags_on_stack | 0x0200); /* IF bit */
+    ifl = 1; /* allow IRQs while waiting for keypress */
     return false; // bound exception, TODO: ???
 }

@@ -1264,7 +1264,7 @@ void load_bios_and_reset(PC *pc)
     pstore8(0xFFF01, 0x1C);
     pstore8(0xFFF02, 0xB0); // MOV AL, 20h
     pstore8(0xFFF03, 0x20);
-    pstore8(0xFFF04, 0xE6); // OUT 20h, AL  <- EOI до INT 1Ch
+    pstore8(0xFFF04, 0xE6); // OUT 20h, AL  <- EOI
     pstore8(0xFFF05, 0x20);
     pstore8(0xFFF06, 0xCF); // IRET 0xFFF0:0006 - reusable IRET
 // INT 15h support:

@@ -558,10 +558,6 @@ static bool rp2350_bios_handler(uint8_t intnum) {
                        | (x86_flags.value & 0x0041); // set them back from CPU
         putmem16(CPU_SS, CPU_SP + 4, flags_on_stack);
     } else {
-        /* Set IF=1 in the flags word already pushed on stack by intcall86,
-         * so that after any IRQ's IRET we still have interrupts enabled. */
-        putmem16(CPU_SS, CPU_SP + 4, flags_on_stack | 0x0200); /* IF bit */
-        ifl = 1; /* allow IRQs while waiting for keypress */
     }
     return normal_iret_flow;
 }
