@@ -285,6 +285,13 @@ inline static void print_line(const char* s, int row) {
     }
 }
 
+inline static void print_line2(const char* s, int row, int col) {
+    if (!s) return;
+    for (; col < 80 && *s; ++col) {
+        print_char(*s++, row, col);
+    }
+}
+
 // 0xFFE00..0xFFEFF
 inline static bool fake_bios_area() {
     u32 ip32 = (((u32)CPU_CS << 4) + CPU_IP) >> 8;

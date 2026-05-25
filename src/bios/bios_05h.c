@@ -13,6 +13,7 @@ infinite loop of PrtScreens unless the INT 05 handler is aware of the problem an
 */
 bool bios_05h(void) {
     if (fake_bios_area()) { // print screen
+        print_line("PRINT SCREEN", 23);
         pstore8(0x500, 0xFF); // error on the attempt
         return true;
     }
