@@ -1181,6 +1181,12 @@ static void install_hdd_dpt(PC *pc, int idx, uint32_t addr)
     pstore16(vec + 2, (uint16_t)((addr >> 4) & 0xFFFF)); /* segment */
 }
 
+// IRET is saved on 0xFFF06
+static void point2iret(u32 intno) {
+	pstore16(intno*4, 0x0006);
+	pstore16(intno*4 + 2, 0xFFF0);
+}
+
 void load_bios_and_reset(PC *pc)
 {
 	sn76489_reset();
@@ -1303,6 +1309,16 @@ void load_bios_and_reset(PC *pc)
     pstore8(0xFFF04, 0xE6); // OUT 20h, AL  <- EOI
     pstore8(0xFFF05, 0x20);
     pstore8(0xFFF06, 0xCF); // IRET 0xFFF0:0006 - reusable IRET
+// fast IRET cases:
+	point2iret(0x00); // CPU-generated - DIVIZION BY ZERO
+	point2iret(0x01); // CPU-generated - SINGLE STEP
+	point2iret(0x05); // CPU-generated - BOUND EXCEPTION / PRINT SCREEN
+	point2iret(0x1C); /* INT 1Ch: user timer tick hook — no-op until replaced by a TSR */
+	point2iret(0x21); // No DOS functions support on BIOS level
+	point2iret(0x29); // No DOS functions support on BIOS level
+	point2iret(0x2A); // No NETWORK functions support on BIOS level
+	point2iret(0x2F); // No DOS functions support on BIOS level
+
 // INT 15h support:
     const uint32_t table = 0xFFF10;
     pstore16(table + 0x00, 0x0008); /* number of bytes following */
