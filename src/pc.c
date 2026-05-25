@@ -1274,6 +1274,7 @@ void load_bios_and_reset(PC *pc)
 	pstore8 (0x487, 0x00);                               /* video control */
 	pstore8 (0x488, 0x00);                               /* switches */
 	pstore8 (0x489, 0x00);                               /* VGA flags */
+	pstore8 (0x496, 0x10);                               // enhanced keyboard present
 
 // init PIC (i8259) — IBM PC/AT sequence
 	// Master PIC: base vector 0x08 (IRQ0→INT 08h … IRQ7→INT 0Fh)
