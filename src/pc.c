@@ -1165,13 +1165,14 @@ static void install_hdd_dpt(PC *pc, int idx, uint32_t addr)
         pstore8 (addr + 0x02, (uint8_t)heads);/* max heads */
         pstore8 (addr + 0x03, 0x00);          /* reserved (XT: starting reduced write current cyl low) */
         pstore8 (addr + 0x04, 0x00);          /* reserved (XT: starting reduced write current cyl high) */
-        pstore16(addr + 0x05, 0x0000);        /* starting write precompensation cylinder */
-        pstore8 (addr + 0x07, 0x00);          /* max ECC burst length */
-        pstore8 (addr + 0x08, 0xC8);          /* drive control: disable retries on error + ECC */
+
+		pstore16(addr + 0x05, 0xFFFF);                    /* write precomp: disabled */
+		pstore8 (addr + 0x07, 0x0B);                      /* max ECC burst length */
+		pstore8 (addr + 0x08, heads > 8 ? 0x08 : 0x00);  /* drive control */
         pstore8 (addr + 0x09, 0x00);          /* reserved */
         pstore8 (addr + 0x0A, 0x00);          /* reserved */
         pstore8 (addr + 0x0B, 0x00);          /* reserved */
-        pstore16(addr + 0x0C, cyls);          /* landing zone cylinder */
+		pstore16(addr + 0x0C, cyls - 1);                  /* landing zone */
         pstore8 (addr + 0x0E, (uint8_t)sects);/* sectors per track */
         pstore8 (addr + 0x0F, 0x00);          /* reserved */
     }

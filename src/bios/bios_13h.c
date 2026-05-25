@@ -363,7 +363,7 @@ void install_floppy_dpt(void) {
     pstore8(FLOPPY_DPT_ADDR + 7, 0x6C); // gap length for format
     pstore8(FLOPPY_DPT_ADDR + 8, 0xF6); // fill byte for format
     pstore8(FLOPPY_DPT_ADDR + 9, 0x0F); // head settle time (ms)
-    pstore8(FLOPPY_DPT_ADDR +10, 0x08); // motor start time (1/8 sec)
+    pstore8(FLOPPY_DPT_ADDR +10, 0x01); // motor start time (1=128 ms)
 
     // Вектор INT 1Eh должен указывать на эту таблицу
     pstore16(0x1E * 4,     FLOPPY_DPT_ADDR & 0x000F);        // IP/offset
