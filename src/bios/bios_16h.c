@@ -32,8 +32,8 @@ while(1); // remove it
     return true;
 }
 
-static uint16_t kbd_start(void) { uint16_t v = readw86(BDA_KBD_START); return v ? v : 0x001E; }
-static uint16_t kbd_end(void)   { uint16_t v = readw86(BDA_KBD_END);   return v ? v : 0x003E; }
+static uint16_t kbd_start(void) { return readw86(BDA_KBD_START); }
+static uint16_t kbd_end(void)   { return readw86(BDA_KBD_END);   }
 
 static uint16_t kbd_next(uint16_t p)
 {

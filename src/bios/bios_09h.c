@@ -19,10 +19,16 @@ static uint8_t ext_prefix;
 static char scan_to_ascii(uint8_t scan, bool shift, bool ctrl, bool caps)
 {
     if (ctrl) {
+        // Ctrl+A..Ctrl+Z: scan совпадает с буквой в normal[]
+        // ASCII = scan_to_ascii(scan, false, false, false) - 'a' + 1
+        char base = scan_to_ascii(scan, false, false, false);
+        if (base >= 'a' && base <= 'z')
+            return (char)(base - 'a' + 1);  // Ctrl+A=0x01 .. Ctrl+Z=0x1A
+        // Специальные случаи
         switch (scan) {
-        case 0x1C: return 0x0A; /* Ctrl-Enter, minimal */
-        case 0x0E: return 0x7F; /* Ctrl-Backspace */
-        default: break;
+        case 0x1C: return 0x0A;  // Ctrl+Enter
+        case 0x0E: return 0x7F;  // Ctrl+Backspace
+        default:   break;
         }
     }
 
