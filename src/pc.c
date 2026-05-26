@@ -1350,11 +1350,25 @@ void load_bios_and_reset(PC *pc)
 	point2iret(0x00); // CPU-generated - DIVIZION BY ZERO
 	point2iret(0x01); // CPU-generated - SINGLE STEP
 	point2iret(0x05); // CPU-generated - BOUND EXCEPTION / PRINT SCREEN
+	point2iret(0x0A); // IRQ2
+	point2iret(0x0B); // IRQ3
+	point2iret(0x0C); // IRQ4
+	point2iret(0x0D); // IRQ5
+	point2iret(0x0E); // IRQ6
+	point2iret(0x0F); // IRQ8 ? cascade ?
 	point2iret(0x1C); /* INT 1Ch: user timer tick hook — no-op until replaced by a TSR */
 	point2iret(0x21); // No DOS functions support on BIOS level
 	point2iret(0x29); // No DOS functions support on BIOS level
 	point2iret(0x2A); // No NETWORK functions support on BIOS level
 	point2iret(0x2F); // No DOS functions support on BIOS level
+	point2iret(0x70); // IRQ8 ? RTC
+	point2iret(0x71); // IRQ9
+	point2iret(0x72); // IRQ10
+	point2iret(0x73); // IRQ11
+	point2iret(0x74); // IRQ12
+	point2iret(0x75); // IRQ13
+	point2iret(0x76); // IRQ14
+	point2iret(0x77); // IRQ15
 
 // INT 15h support:
     const uint32_t table = 0xFFF10;

@@ -497,40 +497,6 @@ static bool bios_13h_08h()
 }
 
 /*
-DISK - SEEK TO CYLINDER
-AH = 0Ch
-CH/CL/DH/DL = CHS drive address, same encoding as AH=02h
-
-Return:
-CF clear if the target CHS address is valid and the backing file seek succeeds
-AH = status
-*/
-static bool bios_13h_0Ch()
-{
-    BiosDisk d;
-    uint32_t lba;
-    uint8_t drive = CPU_DL;
-
-    if (!int13_get_disk(drive, &d)) {
-        int13_set_status(drive, INT13_ST_TIMEOUT);
-        return true;
-    }
-
-    if (!int13_chs_to_lba(&d, &lba)) {
-        int13_set_status(drive, INT13_ST_SECTOR_NF);
-        return true;
-    }
-
-    if (f_lseek(d.f, lba * 512u) != FR_OK) {
-        int13_set_status(drive, INT13_ST_SEEK_FAILED);
-        return true;
-    }
-
-    int13_set_status(drive, INT13_ST_OK);
-    return true;
-}
-
-/*
 DISK - GET DISK TYPE
 AH = 15h
 DL = drive number
@@ -836,9 +802,19 @@ bool bios_13h() {
         case 0x08:
             res = bios_13h_08h(); // GET DRIVE PARAMETERS
             break;
-        case 0x0C:
-            res = bios_13h_0Ch(); // SEEK TO CYLINDER
+        case 0x09:  /* INITIALIZE DRIVE PARAMETERS — no-op for file-backed emulator */
+        case 0x0C:  /* SEEK TO CYLINDER — no-op for file-backed emulator */
+        case 0x0D:  /* ALTERNATE DISK RESET — no-op for file-backed emulator */
+        case 0x11:  /* RECALIBRATE DRIVE — no-op for file-backed emulator */
+        case 0x14:  /* CONTROLLER INTERNAL DIAGNOSTIC — no-op for file-backed emulator */
+            int13_set_status(CPU_DL, INT13_ST_OK);
             break;
+        case 0x10: { /* CHECK DRIVE READY */
+            BiosDisk d;
+            int13_set_status(CPU_DL, int13_get_disk(CPU_DL, &d)
+                            ? INT13_ST_OK : INT13_ST_TIMEOUT);
+            break;
+        }
         case 0x15:
             res = bios_13h_15h(); // GET DISK TYPE
             break;
@@ -854,10 +830,12 @@ bool bios_13h() {
         case 0x48:
             res = bios_13h_48h(); // GET EXTENDED DRIVE PARAMETERS
             break;
+        case 0xE3: // TODO: what is this ???
+           // cf = 1;
+           // CPU_AH = 0x86;
+            break;
         default:
             no_handler();
-            cf = 1;
-            CPU_AH = 0x86;
     }
     if (!res) {
         CPU_IP += 1;
