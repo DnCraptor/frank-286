@@ -222,7 +222,7 @@ static bool int13_rw_chs(uint8_t write, uint8_t verify)
     uint8_t count = CPU_AL;
     uint8_t drive = CPU_DL;
 
-    if (!count) {
+    if (!count) { // || count > 128) { TODO: -- 128 in SeaBIOS. Why?
         int13_set_status(drive, INT13_ST_BAD_COMMAND);
         return true;
     }
@@ -255,6 +255,15 @@ The meaningful effect is clearing the appropriate BDA last-status byte.
 */
 static bool bios_13h_00h()
 {
+    if (!(CPU_DL & 0x80)) {
+        /* FDD reset: сбросить BDA-состояние контроллера (SeaBIOS floppy_reset()) */
+        pstore8(0x43E, 0x00); /* floppy_recalibration_status */
+        pstore8(0x490, 0x00); /* floppy_media_state[0] */
+        pstore8(0x491, 0x00); /* floppy_media_state[1] */
+        pstore8(0x494, 0x00); /* floppy_track[0] */
+        pstore8(0x495, 0x00); /* floppy_track[1] */
+        pstore8(0x48B, 0x00); /* floppy_last_data_rate */
+    }
     int13_set_status(CPU_DL, INT13_ST_OK);
     return true;
 }
@@ -346,6 +355,48 @@ configured geometry.  Data is not copied to guest memory.
 static bool bios_13h_04h()
 {
     return int13_rw_chs(0, 1);
+}
+
+// FORMAT
+static bool bios_13h_05h()
+{
+    BiosDisk d;
+    uint8_t drive = CPU_DL;
+
+    if (!int13_get_disk(drive, &d)) {
+        int13_set_status(drive, INT13_ST_TIMEOUT);
+        return true;
+    }
+
+    uint8_t count    = CPU_AL;
+    uint8_t cylinder = CPU_CH;
+    uint8_t head     = CPU_DH;
+
+    if (cylinder >= d.cyls || head >= d.heads || count == 0 || count > d.sects) {
+        int13_set_status(drive, INT13_ST_BAD_COMMAND);
+        return true;
+    }
+
+    /* Заполнить каждый сектор дорожки fill byte 0xF6 (DPT offset+8, IBM standard) */
+    uint8_t buf[512];
+    memset(buf, 0xF6, sizeof(buf));
+
+    for (uint8_t s = 0; s < count; s++) {
+        uint32_t lba = ((uint32_t)cylinder * d.heads + head) * d.sects + s;
+        if (f_lseek(d.f, lba * 512u) != FR_OK) {
+            int13_set_status(drive, INT13_ST_SEEK_FAILED);
+            return true;
+        }
+        UINT done = 0;
+        if (f_write(d.f, buf, 512, &done) != FR_OK || done != 512) {
+            int13_set_status(drive, INT13_ST_CONTROLLER);
+            return true;
+        }
+    }
+    f_sync(d.f);
+
+    int13_set_status(drive, INT13_ST_OK);
+    return true;
 }
 
 // В load_bios_and_reset() — один раз разместить таблицу в ROM-области:
@@ -753,6 +804,9 @@ bool bios_13h() {
             break;
         case 0x04:
             res = bios_13h_04h(); // VERIFY DISK SECTOR(S)
+            break;
+        case 0x05:
+            res = bios_13h_05h(); // FORMAT
             break;
         case 0x08:
             res = bios_13h_08h(); // GET DRIVE PARAMETERS

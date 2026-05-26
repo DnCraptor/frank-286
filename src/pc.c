@@ -1282,7 +1282,7 @@ void load_bios_and_reset(PC *pc)
 	pstore16(0x460, 0x0607);                             /* cursor shape */
 	pstore8 (0x462, 0x00);                               /* active page */
 	pstore16(0x463, 0x03D4);                             /* color CRTC base */
-	pstore8 (0x465, 0x09);                               /* 80x25 text mode control */
+	pstore8 (0x465, 0x60);                               /* video_ctl: cursor emulation on, no blink */
 	pstore8 (0x466, 0x00);                               /* CGA palette */
 
 	pstore8 (0x46B, 0x00);                               /* ctrl-break flag */
@@ -1292,7 +1292,7 @@ void load_bios_and_reset(PC *pc)
 	pstore16(0x472, 0x0000);                             /* reset flag */
 	pstore8 (0x474, 0x00);                               /* last HDD status */
 	pstore8 (0x475, hdcount > 0 ? hdcount : 0);           /* fixed disk count */
-	pstore8 (0x476, 0x00);                               /* HDD control byte */
+	pstore8 (0x476, 0xC0);                               /* HDD control byte */
 	pstore8 (0x477, 0x00);                               /* HDD I/O port offset */
 	pstore8 (0x478, 0x00);                               /* LPT timeouts */
 	pstore8 (0x479, 0x00);
@@ -1306,8 +1306,9 @@ void load_bios_and_reset(PC *pc)
 	pstore8 (0x484, 24);                                 /* rows minus one */
 	pstore16(0x485, 16);                                 /* char height */
 	pstore8 (0x487, 0x00);                               /* video control */
-	pstore8 (0x488, 0x00);                               /* switches */
+	pstore8 (0x488, 0xF9);                               /* switches */
 	pstore8 (0x489, 0x00);                               /* VGA flags */
+	pstore8 (0x48E, 0x77);                               /* fdd */
 	pstore8 (0x496, 0x10);                               // enhanced keyboard present
 
 // init PIC (i8259) — IBM PC/AT sequence
