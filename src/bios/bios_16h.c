@@ -101,11 +101,15 @@ bool bios_16h(void)
     case 0x01: /* check keystroke */
     case 0x11: /* enhanced check keystroke */
         if (kbd_empty()) {
+            print_line("KBD EMPTY     ", 17);
             zf = 1;
+            cf = 1;
             return true;
         }
+            print_line("KBD NOT EMPTY", 17);
         CPU_AX = kbd_peek();
         zf = 0;
+        cf = 0;
         return true;
 
     case 0x02: /* get shift flags */

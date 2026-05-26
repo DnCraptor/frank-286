@@ -737,27 +737,24 @@ static bool bios_10h_0Eh() {
     uint8_t col = (uint8_t)(cur & 0xFF);
 
     uint8_t rows = rows_minus_1 + 1;
+    /*
+     * AH=0Eh — TTY output. IBM BIOS всегда использует атрибут 0x07
+     * (светло-серый на чёрном) для скролла и вывода символов.
+     * Чтение атрибута из vram ненадёжно: при LF/CR курсор уже
+     * сдвинут и ячейка может содержать мусор от предыдущего контента.
+     */
     uint8_t attr = 0x07;
-
-    if (mode != 7) {
-        /*
-         * Для AH=0Eh BL используется только в graphics modes.
-         * В текстовом режиме BIOS пишет с текущим атрибутом.
-         * Берём атрибут из текущей позиции, если возможно.
-         */
-        uint32_t cell = vram_base + page_off + ((uint32_t)row * cols + col) * 2u;
-        attr = read86(cell + 1);
-        if (attr == 0)
-            attr = 0x07;
-    }
 
     switch (ch) {
         case 0x07: /* BEL */
             return true;
 
         case 0x08: /* BS */
-            if (col > 0)
-                col--;
+            if (col > 0) {
+                uint32_t cell = vram_base + page_off + ((uint32_t)row * cols + col) * 2u;
+                write86(cell + 0, ' ');
+                write86(cell + 1, attr);
+            }
             break;
 
         case 0x0D: /* CR */

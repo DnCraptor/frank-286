@@ -92,6 +92,7 @@ bool bios_1Ah(void)
     }
 
     default:
+        CPU_AH = 0x86;
         cf = 1;
         break;
     }
