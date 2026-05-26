@@ -31,6 +31,15 @@
  */
 #define INT13_EDD_VERSION    0x30u
 #define INT13_EDD_FEATURES   0x0005u
+// TODO:
+/*
+#define INT13_EDD_FEATURES   0x0007u
+AH=45h
+AH=46h
+AH=47h
+AH=48h
+AH=49h
+*/
 #define INT13_EDD_PARAM_SIZE 0x42u
 
 typedef struct BiosDisk_s {
@@ -520,6 +529,8 @@ static bool bios_13h_15h()
 
     if (drive & 0x80) {
         uint32_t sectors = (uint32_t)d.cyls * d.heads * d.sects;
+        // TODO: SeaBIOS: why?
+        //uint32_t sectors = (uint32_t)(d.cyls - 1) * d.heads * d.sects;
         CPU_AH = 0x03;
         CPU_CX = (uint16_t)(sectors >> 16);
         CPU_DX = (uint16_t)(sectors & 0xFFFF);
