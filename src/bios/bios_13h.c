@@ -357,7 +357,30 @@ static bool bios_13h_04h()
     return int13_rw_chs(0, 1);
 }
 
-// FORMAT
+/*
+FLOPPY - FORMAT TRACK
+AH = 05h
+AL = number of sectors to format
+CH = track number
+DH = head number
+DL = drive number
+ES:BX -> address field buffer (see #00235)
+
+Return:
+CF set on error
+CF clear if successful
+AH = status (see #00234)
+
+Notes: On AT or higher, call AH=17h first. The number of sectors per track is read from the diskette parameter table pointed at by INT 1E
+
+Format of floppy format address field buffer entry (one per sector in track):
+
+Offset  Size    Description     (Table 00235)
+00h    BYTE    track number
+01h    BYTE    head number (0-based)
+02h    BYTE    sector number
+03h    BYTE    sector size (00h=128 bytes, 01h=256 bytes, 02h=512, 03h=1024)
+*/
 static bool bios_13h_05h()
 {
     BiosDisk d;
@@ -448,10 +471,12 @@ static bool bios_13h_08h()
     }
 
     uint16_t max_cyl = d.cyls - 1;
+//    if (drive & 0x80 && max_cyl > 0)
+//        max_cyl--;          /* TODO: ?? SeaBIOS disk_1308: last cylinder reserved for diagnostics */
     if (max_cyl > 1023)
         max_cyl = 1023;
 
-    CPU_AH = 0x00;
+    CPU_AX = 0x0000;
     CPU_CH = (uint8_t)(max_cyl & 0xFF);
     CPU_CL = (uint8_t)((d.sects & 0x3F) | ((max_cyl >> 2) & 0xC0));
     CPU_DH = (uint8_t)(d.heads - 1);
