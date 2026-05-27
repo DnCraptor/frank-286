@@ -10,9 +10,14 @@
 #define INT13_ST_OK             0x00
 #define INT13_ST_BAD_COMMAND    0x01
 #define INT13_ST_SECTOR_NF      0x04
+#define INT13_ST_ECHANGED       0x06  /* disk changed (SeaBIOS DISK_RET_ECHANGED) */
+#define INT13_ST_NOT_REMOVABLE  0x0B  /* volume not removable (SeaBIOS DISK_RET_ENOTREMOVABLE) */
 #define INT13_ST_CONTROLLER     0x20
 #define INT13_ST_SEEK_FAILED    0x40
 #define INT13_ST_TIMEOUT        0x80
+#define INT13_ST_ELOCKED        0xB1  /* drive locked (SeaBIOS 0xB1) */
+#define INT13_ST_ENOTLOCKED     0xB0  /* drive not locked (SeaBIOS 0xB0) */
+#define INT13_ST_ETOOMANYLOCKS  0xB4  /* too many locks (SeaBIOS 0xB4) */
 
 /* BDA disk status fields used by IBM-compatible BIOS services.
  * 0040:0041 - last diskette operation status
@@ -30,16 +35,7 @@
  * AH=48h returns a 26-byte v2.x-compatible parameter table.
  */
 #define INT13_EDD_VERSION    0x30u
-#define INT13_EDD_FEATURES   0x0005u
-// TODO:
-/*
 #define INT13_EDD_FEATURES   0x0007u
-AH=45h
-AH=46h
-AH=47h
-AH=48h
-AH=49h
-*/
 #define INT13_EDD_PARAM_SIZE 0x42u
 
 typedef struct BiosDisk_s {
@@ -606,7 +602,7 @@ static bool int13_decode_dap(uint32_t *lba, uint16_t *count, uint32_t *addr)
     if (pload32(dap + 12) != 0)
         return false;
 
-    return *count != 0;
+    return true;  /* count=0 валиден: SeaBIOS возвращает SUCCESS для пустого запроса */
 }
 
 /*
@@ -640,6 +636,17 @@ static bool bios_13h_42h()
         return true;
     }
 
+    if (count == 0) {                              /* SeaBIOS: empty request → SUCCESS */
+        int13_set_status(drive, INT13_ST_OK);
+        return true;
+    }
+
+    uint32_t total = (uint32_t)d.cyls * d.heads * d.sects;
+    if (lba >= total) {                            /* SeaBIOS: explicit range check */
+        int13_set_status(drive, INT13_ST_SECTOR_NF);
+        return true;
+    }
+    
     return int13_transfer_lba(&d, lba, count, addr, 0, 0);
 }
 
@@ -675,7 +682,63 @@ static bool bios_13h_43h()
         return true;
     }
 
+    if (count == 0) {                              /* SeaBIOS: empty request → SUCCESS */
+        int13_set_status(drive, INT13_ST_OK);
+        return true;
+    }
+
+    uint32_t total = (uint32_t)d.cyls * d.heads * d.sects;
+    if (lba >= total) {                            /* SeaBIOS: explicit range check */
+        int13_set_status(drive, INT13_ST_SECTOR_NF);
+        return true;
+    }
+    
     return int13_transfer_lba(&d, lba, count, addr, 1, 0);
+}
+
+/*
+IBM/MS INT 13 Extensions - VERIFY SECTORS
+AH = 44h
+DL = drive number
+DS:SI -> disk address packet (see #00272)
+
+Return:
+CF clear if successful
+AH = 00h
+CF set on error
+AH = error code (see #00234)
+disk address packet's block count field set to number of blocks
+successfully verified
+*/
+static bool bios_13h_44h()
+{
+    BiosDisk d;
+    uint32_t lba, addr;
+    uint16_t count;
+    uint8_t drive = CPU_DL;
+
+    if (!(drive & 0x80) || !int13_get_disk(drive, &d)) {
+        int13_set_status(drive, INT13_ST_TIMEOUT);
+        return true;
+    }
+
+    if (!int13_decode_dap(&lba, &count, &addr)) {
+        int13_set_status(drive, INT13_ST_BAD_COMMAND);
+        return true;
+    }
+
+    if (count == 0) {
+        int13_set_status(drive, INT13_ST_OK);
+        return true;
+    }
+
+    uint32_t total = (uint32_t)d.cyls * d.heads * d.sects;
+    if (lba >= total) {
+        int13_set_status(drive, INT13_ST_SECTOR_NF);
+        return true;
+    }
+
+    return int13_transfer_lba(&d, lba, count, addr, 0, 1);
 }
 
 /*
@@ -748,35 +811,40 @@ static bool bios_13h_48h()
         ret_size = 0x42;
 
         pstore16(p + 0x1E, 0xBEDD);    // key
-        pstore8 (p + 0x20, 0x22);      // device path info length = 34 байт (от +20h до +41h включительно)
-        pstore8 (p + 0x21, 0x00);      // reserved
-        pstore16(p + 0x22, 0x0000);    // reserved
+        pstore8 (p + 0x20, 0x22);      // dpi_length: 34 байт (от +20h до +41h включительно, SeaBIOS Phoenix: 36-2=34)
+        pstore8 (p + 0x21, 0x00);      // reserved1
+        pstore16(p + 0x22, 0x0000);    // reserved2
 
-        // host bus type: "ISA     " (8 байт, дополнить пробелами)
-        const char *bus = "ISA     ";
-        for (int i = 0; i < 8; i++)
+        // host_bus[4]: "ISA " (SeaBIOS: 4 байта, не 8)
+        const char *bus = "ISA ";
+        for (int i = 0; i < 4; i++)
             pstore8(p + 0x24 + i, (uint8_t)bus[i]);
 
-        // interface type: "ATA     " (8 байт)
+        // iface_type[8]: "ATA     "
         const char *iface = "ATA     ";
-        for (int i = 0; i < 8; i++)
+        for (int i = 0; i < 8; i++) {
             pstore8(p + 0x2C + i, (uint8_t)iface[i]);
+            pstore8(p + 0x28 + i, (uint8_t)iface[i]);
+        }
 
-        // interface path (8 байт): I/O base для ISA ATA
-        // primary = 0x1F0, secondary = 0x170
+        // iface_path: u64 (8 байт) начиная с +30h (SeaBIOS: offset of iface_path in int13dpt_s)
         uint16_t iobase = ((drive & 0x7F) < 2) ? 0x01F0 : 0x0170;
-        pstore16(p + 0x34, iobase);
-        pstore32(p + 0x36, 0x00000000);
-        pstore16(p + 0x3A, 0x0000);
+        pstore16(p + 0x30, iobase);
+        pstore16(p + 0x32, 0x0000);
+        pstore32(p + 0x34, 0x00000000);
 
-        // device path (8 байт): device number (0=master, 1=slave)
+        // device_path: u64 (8 байт) начиная с +38h (SeaBIOS: phoenix.device_path)
         uint8_t devnum = (drive & 1) ? 1 : 0;
-        pstore8 (p + 0x3C, devnum);
-        pstore8 (p + 0x3D, 0x00);
-        pstore32(p + 0x3E, 0x00000000);
-        pstore16(p + 0x40, 0x0000);
+        pstore8 (p + 0x38, devnum);
+        pstore8 (p + 0x39, 0x00);
+        pstore16(p + 0x3A, 0x0000);
+        pstore32(p + 0x3C, 0x00000000);
 
-        // checksum: сумма байт от +1Eh до +40h (без байта checksum), результат = (-sum) & 0xFF
+        // reserved3: +40h
+        pstore8 (p + 0x40, 0x00);
+
+        // checksum: +41h (SeaBIOS phoenix.checksum)
+        // считается по байтам +1Eh..+40h (SeaBIOS: checksum_far(seg, param_far+30, 35) = от struct offset 0x1E, 35 байт)
         // записывается в +41h — последний байт буфера 0x42
         uint8_t sum = 0;
         for (uint32_t i = 0x1E; i < 0x41; i++)
@@ -838,8 +906,61 @@ bool bios_13h() {
         case 0x43:
             res = bios_13h_43h(); // EXTENDED WRITE
             break;
+        case 0x44:
+            res = bios_13h_44h(); // IBM/MS INT 13 Extensions - VERIFY SECTORS
+            break;
+        case 0x45:  /* LOCK/UNLOCK DRIVE — no removable media support TODO: */
+            int13_set_status(CPU_DL, INT13_ST_OK);
+            break;
+        case 0x46: {  /* EJECT MEDIA — not supported TODO: ensure */
+            BiosDisk d;
+            if (!int13_get_disk(CPU_DL, &d)) {
+                int13_set_status(CPU_DL, INT13_ST_TIMEOUT);
+            } else if (d.hdd && ata_is_cdrom(CPU_DL & 0x7F)) {
+                /* CD-ROM: нет реального эжекта — сообщаем locked */
+                int13_set_status(CPU_DL, INT13_ST_ELOCKED);
+            } else {
+                /* HDD/FDD: SeaBIOS ENOTREMOVABLE */
+                int13_set_status(CPU_DL, INT13_ST_NOT_REMOVABLE);
+            }
+            break;
+        }
+        case 0x47: { /* EXTENDED SEEK — no-op for file-backed emulator */
+            uint32_t lba, addr;
+            uint16_t count;
+            if (!int13_decode_dap(&lba, &count, &addr)) {
+                int13_set_status(CPU_DL, INT13_ST_BAD_COMMAND);
+            } else {
+                int13_set_status(CPU_DL, INT13_ST_OK);
+            }
+            break;
+        }
         case 0x48:
             res = bios_13h_48h(); // GET EXTENDED DRIVE PARAMETERS
+            break;
+        case 0x49: { /* EXTENDED MEDIA CHANGE */
+            BiosDisk d;
+            if (!int13_get_disk(CPU_DL, &d)) {
+                int13_set_status(CPU_DL, INT13_ST_TIMEOUT);
+            } else if (d.hdd && ata_is_cdrom((CPU_DL & 0x7F))) {
+                /* CD-ROM: SeaBIOS всегда возвращает ECHANGED (0x06) */
+                CPU_AH = INT13_ST_ECHANGED;
+                cf = 1;
+            } else {
+                /* HDD/FDD: SeaBIOS всегда SUCCESS */
+                int13_set_status(CPU_DL, INT13_ST_OK);
+            }
+            break;
+        }
+        case 0x4E: /* SET HARDWARE CONFIGURATION (SeaBIOS disk_134e) */
+            switch (CPU_AL) {
+            case 0x01: case 0x03: case 0x04: case 0x06:
+                int13_set_status(CPU_DL, INT13_ST_OK);
+                break;
+            default:
+                int13_set_status(CPU_DL, INT13_ST_BAD_COMMAND);
+                break;
+            }
             break;
         case 0xE3: // TODO: what is this ???
            // cf = 1;
