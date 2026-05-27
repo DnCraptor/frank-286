@@ -7,6 +7,7 @@ bool bios_00h(); // Division by zero, etc...
 bool bios_05h(); // PRINT SCREEN / BOUND RANGE EXCEEDED
 bool bios_08h(); // IRQ0 timer tick
 bool bios_09h(); // IRQ1 keyboard
+bool bios_09h_phase2(); // IRQ1 keyboard phase2 (called via INT 77h after INT 15h/4Fh)
 bool bios_10h(); // VIDEO
 bool bios_11h(); // EQUIPMENT LIST
 bool bios_12h(); // LOW MEM SIZE

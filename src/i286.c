@@ -553,13 +553,6 @@ static bool rp2350_bios_handler(uint8_t intnum) {
 
 if (intnum != 0x1C && intnum != 8) { // do not show timer
     print_line2("BIOS", 0, 8);
-    /*
-    char buf[80];
-    u16 new_cs = getmem16(0, (uint16_t) intnum * 4 + 2);
-    u16 new_ip = getmem16(0, (uint16_t) intnum * 4);
-    snprintf(buf, 79, "INT %02Xh BIOS %04X:%04X->%04X:%04X AX:%04X", intnum, CPU_CS, CPU_IP, new_cs, new_ip, CPU_AX);
-    print_line(buf, 0);
-    */
 }
     bool normal_iret_flow = handlers[intnum]();
     uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
@@ -599,6 +592,7 @@ i286* i286_new(CPU_CB* *cb) {
 //    handlers[0x05] = bios_05h; // No print screen impl. there
     handlers[0x08] = bios_08h;
     handlers[0x09] = bios_09h;
+    handlers[0x77] = bios_09h_phase2;
 //    handlers[0x0F] = nop_handler; // no IRQ7 - PARALLEL PRINTER handler
     handlers[0x10] = bios_10h;
     handlers[0x11] = bios_11h;

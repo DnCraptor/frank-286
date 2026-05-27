@@ -1,36 +1,16 @@
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include "i286.h"
 #include "bios.h"
 
 #define BDA_BASE        0x400u
 #define BDA_KBD_FLAGS1  0x417u
 #define BDA_KBD_FLAGS2  0x418u
+#define BDA_KBD_FLAGS3  0x496u
 #define BDA_KBD_HEAD    0x41Au
 #define BDA_KBD_TAIL    0x41Cu
 #define BDA_KBD_START   0x480u
 #define BDA_KBD_END     0x482u
-
-
-static bool no_handler() {
-    print_line("KEYBOARD BIOS - ERROR: no handler defined", 1);
-    char buf[10];
-    snprintf(buf, 10, "AX: %04xh", CPU_AX); print_line(buf, 2);
-    snprintf(buf, 10, "BX: %04xh", CPU_BX); print_line(buf, 3);
-    snprintf(buf, 10, "CX: %04xh", CPU_CX); print_line(buf, 4);
-    snprintf(buf, 10, "DX: %04xh", CPU_DX); print_line(buf, 5);
-    snprintf(buf, 10, "SI: %04xh", CPU_SI); print_line(buf, 5);
-    snprintf(buf, 10, "DI: %04xh", CPU_DI); print_line(buf, 6);
-    snprintf(buf, 10, "BP: %04xh", CPU_BP); print_line(buf, 7);
-    snprintf(buf, 10, "DS: %04xh", CPU_DS); print_line(buf, 8);
-    snprintf(buf, 10, "SS: %04xh", CPU_SS); print_line(buf, 9);
-    snprintf(buf, 10, "FS: %04xh", CPU_FS); print_line(buf, 10);
-    snprintf(buf, 10, "GS: %04xh", CPU_GS); print_line(buf, 11);
-    snprintf(buf, 10, "ES: %04xh", CPU_ES); print_line(buf, 12);
-while(1); // remove it
-    return true;
-}
 
 static uint16_t kbd_start(void) { return readw86(BDA_KBD_START); }
 static uint16_t kbd_end(void)   { return readw86(BDA_KBD_END);   }
@@ -84,32 +64,19 @@ bool bios_16h(void)
             uint16_t flags_on_stack = readw86((CPU_SS << 4) + CPU_SP + 4);
             writew86((CPU_SS << 4) + CPU_SP + 4, flags_on_stack | 0x0200); /* IF bit */
             ifl = 1; /* allow IRQs while waiting for keypress */
-            print_line("KBD BLOCK ENTER", 15);
             return false;
         }
-        print_line("KBD BLOCK EXIT ", 15);
-        { char buf[64]; snprintf(buf, sizeof(buf), "pop h=%04x t=%04x s=%04x e=%04x v=%04x",
-            readw86(BDA_KBD_HEAD), readw86(BDA_KBD_TAIL),
-            readw86(BDA_KBD_START), readw86(BDA_KBD_END),
-            readw86(BDA_BASE + readw86(BDA_KBD_HEAD))); print_line(buf, 14); }
-
         CPU_AX = kbd_pop();
-        cf = 0;
-        zf = 0;        
         return true;
 
     case 0x01: /* check keystroke */
     case 0x11: /* enhanced check keystroke */
         if (kbd_empty()) {
-            print_line("KBD EMPTY     ", 17);
             zf = 1;
-            cf = 1;
             return true;
         }
-            print_line("KBD NOT EMPTY", 17);
         CPU_AX = kbd_peek();
         zf = 0;
-        cf = 0;
         return true;
 
     case 0x02: /* get shift flags */
@@ -124,16 +91,33 @@ bool bios_16h(void)
         CPU_AL = bios_16h_store_key(CPU_DX) ? 0x00 : 0x01;
         cf = 0;
         return true;
-
-    case 0x12: /* get extended shift flags */
-        CPU_AL = read86(BDA_KBD_FLAGS1);
-        CPU_AH = read86(BDA_KBD_FLAGS2);
+    case 0x09: /* GET KEYBOARD FUNCTIONALITY (SeaBIOS handle_1609) */
+        CPU_AL = 0x30;  /* bits 5,4: AH=10h-12h + AH=0Ah supported */
         return true;
 
+    case 0x0A: /* GET KEYBOARD ID (SeaBIOS handle_160a) */
+        CPU_BX = 0xAB83;  /* standard AT enhanced keyboard ID */
+        return true;
+
+    case 0x12: /* get extended shift flags */
+        /* AL = kbd_flag0 (0x417)
+         * AH = 0x418 with RCTRL/RALT bits overridden from kbd_flag1 (0x496)
+         * SeaBIOS: ax = (kbd_flag0 & ~(KF1_RCTRL|KF1_RALT)<<8) | (kbd_flag1 & (KF1_RCTRL|KF1_RALT))<<8 */
+        CPU_AL = read86(BDA_KBD_FLAGS1);
+        CPU_AH = (read86(BDA_KBD_FLAGS2) & ~0x0C)
+               | (read86(BDA_KBD_FLAGS3) & 0x0C);  /* KF1_RCTRL=0x04, KF1_RALT=0x08 */
+        return true;
+
+    case 0x92: /* keyboard capability check (SeaBIOS handle_1692) */
+        CPU_AH = 0x80;  /* AH=10h-12h supported */
+        return true;
+
+    case 0xA2: /* 122-key capability check (SeaBIOS handle_16a2) */
+        /* do nothing: 122-key NOT supported, AH unchanged */
+         return true;        
+
     default:
-        no_handler();
-        CPU_AH = 0x86;
-        cf = 1;
+        /* SeaBIOS handle_16XX: warn and return, no hang */
         return true;
     }
 }

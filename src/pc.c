@@ -1346,6 +1346,23 @@ void load_bios_and_reset(PC *pc)
     pstore8(0xFFF04, 0xE6); // OUT 20h, AL  <- EOI
     pstore8(0xFFF05, 0x20);
     pstore8(0xFFF06, 0xCF); // IRET 0xFFF0:0006 - reusable IRET
+// IRQ1 INT 15h/4Fh keyboard intercept stub: 0xFFF70..0xFFF7A
+//   0xFFF70 = scratch byte (scan code, written by bios_09h phase1)
+//   0xFFF71 = stub entry point
+    pstore8(0xFFF70, 0x00); // scratch: scan code placeholder
+    pstore8(0xFFF71, 0xB4); // MOV AH, 4Fh
+    pstore8(0xFFF72, 0x4F);
+    pstore8(0xFFF73, 0xA0); // MOV AL, [0xFFF70]  — load scan from scratch
+    pstore8(0xFFF74, 0x70); //   offset lo
+    pstore8(0xFFF75, 0xFF); //   offset hi (DS=0, physical 0xFFF70)
+    pstore8(0xFFF76, 0xF9); // STC  — CF=1: do not intercept by default
+    pstore8(0xFFF77, 0xCD); // INT 15h
+    pstore8(0xFFF78, 0x15);
+    pstore8(0xFFF79, 0xCD); // INT 77h — callback to bios_09h_phase2
+    pstore8(0xFFF7A, 0x77);
+    pstore8(0xFFF7B, 0xCF); // IRET — fallback if phase2 returns false
+    // + IVT: INT 77h → callback handler (fake BIOS area, IP=0x77)
+    // already set by general IVT init loop (0xFFE0:0x77)
 // fast IRET cases:
 	point2iret(0x00); // CPU-generated - DIVIZION BY ZERO
 	point2iret(0x01); // CPU-generated - SINGLE STEP
@@ -1368,7 +1385,7 @@ void load_bios_and_reset(PC *pc)
 	point2iret(0x74); // IRQ12
 	point2iret(0x75); // IRQ13
 	point2iret(0x76); // IRQ14
-	point2iret(0x77); // IRQ15
+// TODO: IRQ1 flow already uses it, to be fixed /	point2iret(0x77); // IRQ15
 
 // INT 15h support:
     const uint32_t table = 0xFFF10;

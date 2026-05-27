@@ -21,6 +21,36 @@ while(1); // remove it
     return true;
 }
 
+// A20 GATE
+static bool bios_15h_24h() {
+    switch (CPU_AL) {
+    case 0x00:              /* disable A20 */
+        a20_enabled = 0;
+        CPU_AH = 0x00;
+        cf = 0;
+        return true;
+    case 0x01:              /* enable A20 */
+        a20_enabled = 1;
+        CPU_AH = 0x00;
+        cf = 0;
+        return true;
+    case 0x02:              /* get A20 status */
+        CPU_AL = (uint8_t)a20_enabled;
+        CPU_AH = 0x00;
+        cf = 0;
+        return true;
+    case 0x03:              /* get A20 support — keyboard ctrl + port 0x92 */
+        CPU_BX = 0x0003;
+        CPU_AH = 0x00;
+        cf = 0;
+        return true;
+    default:
+        cf = 1;
+        CPU_AH = 0x86;      /* unsupported subfunction */
+        return true;
+    }
+}
+
 /*
 SYSTEM - GET EXTENDED MEMORY SIZE (286+)
 AH = 88h
@@ -145,6 +175,8 @@ static bool bios_15h_C0h() {
 
 bool bios_15h() {
     switch(CPU_AH) {
+        case 0x24:
+            return bios_15h_24h(); // A20 GATE
         case 0x88:
             return bios_15h_88h(); // GET EXTENDED MEMORY SIZE (286+)
         case 0xC0:
@@ -152,6 +184,7 @@ bool bios_15h() {
         default:
             no_handler();
         case 0x41: // WAIT ON EXTERNAL EVENT (CONVERTIBLE and some others)
+        case 0x4F:  /* keyboard intercept — not hooked, pass through */
             // unsupported
     }
     cf = 1;
