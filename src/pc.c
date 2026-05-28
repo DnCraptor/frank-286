@@ -1366,7 +1366,12 @@ void load_bios_and_reset(PC *pc)
 // fast IRET cases:
 	point2iret(0x00); // CPU-generated - DIVIZION BY ZERO
 	point2iret(0x01); // CPU-generated - SINGLE STEP
-	point2iret(0x05); // CPU-generated - BOUND EXCEPTION / PRINT SCREEN
+	point2iret(0x02); // NMI
+	point2iret(0x03); // Breakpoin
+	point2iret(0x04); // INTO overflow
+	point2iret(0x05); // CPU-generated - BOUND EXCEPTION / PRINT SCREEN (TODO: more strickt impl.)
+	point2iret(0x06); // Invalid opcode
+	point2iret(0x07); // Coprocessor not available
 	point2iret(0x0A); // IRQ2
 	point2iret(0x0B); // IRQ3
 	point2iret(0x0C); // IRQ4

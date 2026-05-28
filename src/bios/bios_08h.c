@@ -28,6 +28,16 @@ bool bios_08h(void)
     }
     pstore32(0x046C, ticks);
 
+    /* floppy_tick: декрементировать motor timeout counter */
+    uint8_t motor_ctr = pload8(0x440);
+    if (motor_ctr) {
+        motor_ctr--;
+        pstore8(0x440, motor_ctr);
+        if (motor_ctr == 0) {
+            /* выключить моторы: сбросить BDA motor status */
+            pstore8(0x43F, 0x00);
+        }
+    }
     /* 3: chain to INT 1Ch (user tick hook)
     Moved to: void load_bios_and_reset(PC *pc)
     int 1Ch

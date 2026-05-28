@@ -180,12 +180,26 @@ bool bios_09h_phase2(void)
         bool shift = (flags & (KBD_FLAG_LSHIFT | KBD_FLAG_RSHIFT)) != 0;
         bool ctrl  = (flags & KBD_FLAG_CTRL) != 0;
         bool caps  = (flags & KBD_FLAG_CAPS) != 0;
+        bool num   = (flags & KBD_FLAG_NUM) != 0;
+
+        /* SeaBIOS: NumLock inverts shift for numpad keys 0x47..0x53 */
+        if (num && scan >= 0x47 && scan <= 0x53)
+            shift ^= 1;
+        
         uint8_t ascii = (uint8_t)scan_to_ascii(scan, shift, ctrl, caps);
         uint16_t ax = ((uint16_t)scan << 8) | ascii;
 
-        /* E0 prefix: extended key — replace ASCII with 0xE0 (SeaBIOS) */
-        if (flags1 & KF1_LAST_E0)
-            ax = (ax & 0xFF00u) | 0x00E0u;
+        if (flags1 & KF1_LAST_E0) {
+            /* E0+1Ch = extended Enter → 0xE00D (SeaBIOS key_ext_enter) */
+            if (scan == 0x1C)
+                ax = 0xE00D;
+            /* E0+35h = numpad slash → 0xE02F (SeaBIOS key_ext_slash) */
+            else if (scan == 0x35)
+                ax = 0xE02F;
+            /* other extended keys: replace ASCII with 0xE0 (SeaBIOS) */
+            else
+                ax = (ax & 0xFF00u) | 0x00E0u;
+        }
 
         if (ax != 0)
             bios_16h_store_key(ax);
@@ -197,9 +211,6 @@ eoi_return:
     cpu_portout8(0x20, 0x20);
     return true;
 }
-
-/* Phase 1: read scan code, save in scratch, redirect to INT 15h/4Fh stub.
- * Returns false → main loop continues execution at stub (CS:IP set here). */
 
 /* Phase 1: read scan code, save in scratch, redirect to INT 15h/4Fh stub.
  * Returns false → main loop continues execution at stub (CS:IP set here). */
