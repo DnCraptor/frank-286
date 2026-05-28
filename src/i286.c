@@ -543,6 +543,8 @@ static bool no_handler() {
     snprintf(buf, 10, "FS: %04xh", CPU_FS); print_line(buf, 10);
     snprintf(buf, 10, "GS: %04xh", CPU_GS); print_line(buf, 11);
     snprintf(buf, 10, "ES: %04xh", CPU_ES); print_line(buf, 12);
+    snprintf(buf, 10, "CS: %04xh", CPU_CS); print_line(buf, 13);
+    snprintf(buf, 10, "IP: %04xh", CPU_IP); print_line(buf, 14);
 while(1); // remove it
     return true;
 }

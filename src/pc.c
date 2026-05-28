@@ -1151,7 +1151,12 @@ PC *pc_new(void (*poll)(void *), void *redraw_data, u8 *fb, PCConfig *conf)
 
 static void install_dpte(int idx, uint32_t addr)
 {
-    // Primary IDE: 0x1F0, Secondary: 0x170
+    if (!ata_is_inserted(idx) || ata_is_cdrom(idx)) {
+        for (int i = 0; i < 16; i++)
+            pstore8(addr + i, 0x00);
+        return;
+    }
+	// Primary IDE: 0x1F0, Secondary: 0x170
     uint16_t iobase  = (idx < 2) ? 0x01F0 : 0x0170;
     uint16_t ctlbase = (idx < 2) ? 0x03F6 : 0x0376;
     uint8_t  devhead = (idx & 1) ? 0xB0 : 0xA0; // slave/master
@@ -1162,11 +1167,11 @@ static void install_dpte(int idx, uint32_t addr)
     buf[2]  = (uint8_t)(ctlbase & 0xFF);
     buf[3]  = (uint8_t)(ctlbase >> 8);
     buf[4]  = devhead;
-    buf[5]  = 0x00;   // vendor
-    buf[6]  = 0x00;   // flags
-    buf[7]  = 0x00;   // PIO mode
-    buf[8]  = 0x00;   // DMA
-    buf[9]  = 0x00;   // timing
+    buf[5]  = 0x00;   // host bus/interface type: ISA-compatible ATA
+    buf[6]  = 0x00;   // flags: no CHS translation/DMA assumptions
+    buf[7]  = 0x02;   // PIO mode 2
+    buf[8]  = 0x00;   // DMA mode: none
+    buf[9]  = 0x0B;   // PIO cycle timing, conservative default
     buf[10] = 0x00;
     buf[11] = 0x00;   // DMA channel
     buf[12] = 0x00;
@@ -1193,7 +1198,10 @@ static void install_hdd_dpt(PC *pc, int idx, uint32_t addr)
         // Просто обнулить таблицу и поставить вектор
         for (int i = 0; i < 16; i++)
             pstore8(addr + i, 0x00);
-    } else {
+      //  pstore16(vec, 0x0000);
+      //  pstore16(vec + 2, 0x0000);
+      //  return;
+	} else {
         uint16_t cyls  = ata_get_cyls(idx);
         uint16_t heads = ata_get_heads(idx);
         uint16_t sects = ata_get_sects(idx);
@@ -1414,6 +1422,7 @@ void load_bios_and_reset(PC *pc)
 // INT 41h/46h support: 0xFFF30-0xFFF4F
     install_hdd_dpt(pc, 0, 0xFFF30);  // INT 41h → первый HDD
     install_hdd_dpt(pc, 1, 0xFFF40);  // INT 46h → второй HDD
+// 0xFFF50-0xFFF6F
 	install_dpte(0, DPTE_ADDR_0);
 	install_dpte(1, DPTE_ADDR_1);
 // BIOS banner:
