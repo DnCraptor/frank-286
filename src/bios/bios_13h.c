@@ -804,7 +804,6 @@ static bool bios_13h_48h()
         // iface_type[8]: "ATA     "
         const char *iface = "ATA     ";
         for (int i = 0; i < 8; i++) {
-            pstore8(p + 0x2C + i, (uint8_t)iface[i]);
             pstore8(p + 0x28 + i, (uint8_t)iface[i]);
         }
 
