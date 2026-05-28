@@ -28,8 +28,8 @@ struct struct_fdd {
     uint8_t readonly;
     uint8_t drive_type;  /* BIOS/CMOS type: 1=360K 2=1.2M 3=720K 4=1.44M 5=2.88M */
 } fdd[2] = {
-    [0] = { .drive_type = 4 },  // A: floppy, default 1.44M
-    [1] = { .drive_type = 4 },  // B: floppy, default 1.44M
+    [0] = { .cyls = 80, .heads = 2, .sects = 18, .drive_type = 4 },  // A: floppy, default 1.44M
+    [1] = { .cyls = 80, .heads = 2, .sects = 18, .drive_type = 4 },  // B: floppy, default 1.44M
 };  // 0-1: floppy, 2-3: HDD, 4: CD-ROM
 
 struct struct_ata {

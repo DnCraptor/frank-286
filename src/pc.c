@@ -999,7 +999,11 @@ PC *pc_new(void (*poll)(void *), void *redraw_data, u8 *fb, PCConfig *conf)
 	/* Set up INT 13h disk handler (real mode - DOS) */
 	disk_set_cpu(pc->cpu);
 	disk_set_cmos_callback(cmos_floppy_update);
-
+    {
+        uint32_t ft = fdds_types();
+        cmos_floppy_update((uint8_t)(ft & 0x0F),
+                           (uint8_t)((ft >> 4) & 0x0F));
+    }
 	netredirect_init(pc->cpu, conf->redirector);
 
 	/* Set up IDE emulation (protected mode - Win95) */

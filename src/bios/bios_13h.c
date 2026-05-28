@@ -84,22 +84,21 @@ static bool int13_get_disk(uint8_t drive, BiosDisk *d)
     d->sects = 0;
 
     if (!d->hdd) { /* FDD: DL=00h..01h */
-        if (drive >= 2 || !fdd_is_inserted(drive))
-            return false;
+        if (drive >= 2) return false;
         d->cyls = fdd_get_cyls(drive);
         d->heads = fdd_get_heads(drive);
         d->sects = fdd_get_sects(drive);
-        d->f = fdd_get_file(drive);
-    } else {       /* HDD: DL=80h..83h, CD-ROM images are not INT 13h CHS disks. */
-        uint8_t hdd = drive & 0x7F;
-        if (hdd >= 4 || !ata_is_inserted(hdd) || ata_is_cdrom(hdd))
-            return false;
-        d->cyls = ata_get_cyls(hdd);
-        d->heads = ata_get_heads(hdd);
-        d->sects = ata_get_sects(hdd);
-        d->f = ata_get_file(hdd);
+        d->f = fdd_is_inserted(drive) ? fdd_get_file(drive) : NULL;
+        return true;
     }
-
+    /* HDD: DL=80h..83h, CD-ROM images are not INT 13h CHS disks. */
+    uint8_t hdd = drive & 0x7F;
+    if (hdd >= 4 || !ata_is_inserted(hdd) || ata_is_cdrom(hdd))
+        return false;
+    d->cyls = ata_get_cyls(hdd);
+    d->heads = ata_get_heads(hdd);
+    d->sects = ata_get_sects(hdd);
+    d->f = ata_get_file(hdd);
     return d->f && d->cyls && d->heads && d->sects;
 }
 
@@ -217,7 +216,10 @@ static bool int13_rw_chs(uint8_t write, uint8_t verify)
         int13_set_status(drive, INT13_ST_TIMEOUT);
         return true;
     }
-
+    if (!d.f) {
+        int13_set_status(drive, INT13_ST_TIMEOUT);
+        return true;
+    }
     if (!int13_chs_to_lba(&d, &lba)) {
         int13_set_status(drive, INT13_ST_SECTOR_NF);
         return true;
@@ -376,7 +378,10 @@ static bool bios_13h_05h()
         int13_set_status(drive, INT13_ST_TIMEOUT);
         return true;
     }
-
+    if (!d.f) {
+        int13_set_status(drive, INT13_ST_TIMEOUT);
+        return true;
+    }
     uint8_t count    = CPU_AL;
     uint8_t cylinder = CPU_CH;
     uint8_t head     = CPU_DH;
@@ -473,7 +478,7 @@ static bool bios_13h_08h()
         CPU_DI = 0x0000;
     } else {
         CPU_DL = 2;       /* BDA equipment word currently advertises two floppy drives. */
-        CPU_BL = 0x04;    /* 1.44M type as a conservative default for inserted images. */
+        CPU_BL = fdds_types() >> (drive ? 4 : 0);
         CPU_ES = (FLOPPY_DPT_ADDR >> 4) & 0xFFFF;
         CPU_DI = FLOPPY_DPT_ADDR & 0x000F;
     }
