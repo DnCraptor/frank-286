@@ -1377,7 +1377,7 @@ void load_bios_and_reset(PC *pc)
 	point2iret(0x0C); // IRQ4
 	point2iret(0x0D); // IRQ5
 	point2iret(0x0E); // IRQ6
-	point2iret(0x0F); // IRQ8 ? cascade ?
+	point2iret(0x0F); // IRQ7 cascade no EOI, if reimpl.
 	point2iret(0x1C); /* INT 1Ch: user timer tick hook — no-op until replaced by a TSR */
 	point2iret(0x21); // No DOS functions support on BIOS level
 	point2iret(0x29); // No DOS functions support on BIOS level

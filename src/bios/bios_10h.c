@@ -464,7 +464,6 @@ static bool bios_10h_00h(void)
 
     const VgaMode *m = vga_find_mode(mode);
     if (!m) {
-no_handler(); // stop there
         cf = 1;
         return true;
     }
@@ -484,10 +483,17 @@ no_handler(); // stop there
     for (uint8_t page = 0; page < 8; page++)
         writew86(0x450 + page * 2, 0x0000);
 
-    if (m->char_height >= 14)
+    if (m->char_height <= 8)
         writew86(0x460, 0x0607);
-    else
-        writew86(0x460, 0x0607);
+    else if (m->char_height <= 14)
+        writew86(0x460, 0x0B0C);
+     else
+        writew86(0x460, 0x0E0F);
+
+    /* SeaBIOS vga_set_mode: update video_ctl, video_switches, modeset_ctl */
+    write86(0x465, no_clear ? 0xE0 : 0x60);             /* video_ctl: bit7=no_clear (SeaBIOS) */
+    write86(0x488, 0xF9);                               /* video_switches */
+    write86(0x489, read86(0x489) & ~0x80);              /* modeset_ctl: clear bit 7 */
 
     if (!no_clear) {
         if (m->text) {
@@ -525,40 +531,25 @@ CRTC: reg 0Ah = start scan / cursor disable, reg 0Bh = end scan
 static bool bios_10h_01h(void)
 {
     uint8_t ch_raw = CPU_CH;
-    uint8_t cl     = CPU_CL & 0x1F;
-    uint8_t start  = ch_raw & 0x1F;       /* scan start, bits 4:0 */
+    uint8_t cl_raw = CPU_CL & 0x1F;
     bool    hidden = (ch_raw & 0x20) != 0; /* bit 5 = cursor disable */
 
-    /* Remap CGA-relative scan lines to actual font height.
-     * Software passes coordinates assuming an 8-line font.
-     * VGA BIOS behaviour: preserve the span (end-start) and
-     * anchor it to the bottom of the glyph. */
-    uint8_t fh = read86(0x485);
-    if (fh == 0) fh = 16;
-    if (fh != 8 && cl >= start) {
-        uint8_t span   = cl - start;
-        uint8_t new_cl = fh - 1;
-        uint8_t new_st = (span < new_cl) ? (new_cl - span) : 0;
-        start = new_st;
-        cl    = new_cl;
-    }
-    
-    /* Save raw CH:CL in BDA 0x460 (what AH=03h returns) */
-    writew86(0x460, ((uint16_t)ch_raw << 8) | (CPU_CL & 0x1F));
+    /* Save raw CH:CL in BDA 0x460 (SeaBIOS: SET_BDA(cursor_type, CX) — raw) */
+    writew86(0x460, ((uint16_t)ch_raw << 8) | CPU_CL);
 
     /* Program CRTC */
     uint16_t crtc = readw86(0x463);
     if (crtc == 0) crtc = 0x3D4;
 
     /* CRTC reg 0Ah: bit5=CD (cursor disable), bits4:0=start scan line */
-    uint8_t reg0a = start;
+    uint8_t reg0a = (ch_raw & 0x1F);
     if (hidden) reg0a |= 0x20;
     cpu_portout8(crtc,     0x0A);
     cpu_portout8(crtc + 1, reg0a);
 
     /* CRTC reg 0Bh: bits4:0=end scan line */
     cpu_portout8(crtc,     0x0B);
-    cpu_portout8(crtc + 1, cl);
+    cpu_portout8(crtc + 1, cl_raw);
 
     return true;
 }
@@ -578,6 +569,7 @@ Nothing
 */
 static bool bios_10h_02h() {
     uint8_t page = CPU_BH;
+    if (page > 7) return true;
     uint8_t row = CPU_DH;
     uint8_t col = CPU_DL;
     uint16_t cur;
@@ -613,6 +605,7 @@ color display (start 06h, end 07h) when a monochrome display is attached. With P
 */
 static bool bios_10h_03h() {
     uint8_t page = CPU_BH;
+    if (page > 7) { CPU_AX = 0; CPU_CX = 0; CPU_DX = 0; return true; }
     uint16_t shape = readw86(0x460);
     uint16_t cur   = readw86(0x450 + ((uint16_t)page * 2));
     CPU_AX = 0;
