@@ -1,25 +1,7 @@
-#include <stdio.h>
+#include <pico.h>
+#include <pico/time.h>
 #include "i286.h"
 #include "bios.h"
-
-static bool no_handler() {
-    print_line("TSR BIOS - ERROR: no handler defined", 1);
-    char buf[10];
-    snprintf(buf, 10, "AX: %04xh", CPU_AX); print_line(buf, 2);
-    snprintf(buf, 10, "BX: %04xh", CPU_BX); print_line(buf, 3);
-    snprintf(buf, 10, "CX: %04xh", CPU_CX); print_line(buf, 4);
-    snprintf(buf, 10, "DX: %04xh", CPU_DX); print_line(buf, 5);
-    snprintf(buf, 10, "SI: %04xh", CPU_SI); print_line(buf, 5);
-    snprintf(buf, 10, "DI: %04xh", CPU_DI); print_line(buf, 6);
-    snprintf(buf, 10, "BP: %04xh", CPU_BP); print_line(buf, 7);
-    snprintf(buf, 10, "DS: %04xh", CPU_DS); print_line(buf, 8);
-    snprintf(buf, 10, "SS: %04xh", CPU_SS); print_line(buf, 9);
-    snprintf(buf, 10, "FS: %04xh", CPU_FS); print_line(buf, 10);
-    snprintf(buf, 10, "GS: %04xh", CPU_GS); print_line(buf, 11);
-    snprintf(buf, 10, "ES: %04xh", CPU_ES); print_line(buf, 12);
-while(1); // remove it
-    return true;
-}
 
 // A20 GATE
 static bool bios_15h_24h() {
@@ -49,6 +31,61 @@ static bool bios_15h_24h() {
         CPU_AH = 0x86;      /* unsupported subfunction */
         return true;
     }
+}
+
+/*
+SYSTEM - COPY EXTENDED MEMORY
+AH = 87h
+CX = number of words to copy (max 8000h)
+ES:SI -> global descriptor table (see #00499)
+
+Return:
+CF set on error
+CF clear if successful
+AH = status (see #00498)
+
+Notes: Copy is done in protected mode with interrupts disabled by the default BIOS handler; many 386 memory managers perform 
+the copy with interrupts enabled. On the PS/2 30-286 & "Tortuga" this function does not use the port 92h for A20 control,
+but instead uses the keyboard controller (8042). Reportedly this may cause the system to crash when access to the 8042
+is disabled in password server mode (see also PORT 0064h,#P0398). This function is incompatible with the OS/2 compatibility box
+*/
+static bool bios_15h_87h(void)
+{
+    /* ES:SI → 48-byte GDT table:
+     *   +00h: null descriptor
+     *   +08h: GDT descriptor (filled by BIOS)
+     *   +10h: source descriptor
+     *   +18h: destination descriptor
+     *   +20h: CS descriptor (filled by BIOS)
+     *   +28h: SS descriptor (filled by BIOS)
+     */
+    uint32_t tbl = (uint32_t)CPU_ES * 16 + CPU_SI;
+    uint16_t count = CPU_CX;  /* number of WORDS to copy */
+
+    /* Read 24-bit base from descriptor: bytes 2,3,4 */
+    uint32_t src = (uint32_t)pload8(tbl + 0x10 + 2)
+                 | ((uint32_t)pload8(tbl + 0x10 + 3) << 8)
+                 | ((uint32_t)pload8(tbl + 0x10 + 4) << 16);
+
+    uint32_t dst = (uint32_t)pload8(tbl + 0x18 + 2)
+                 | ((uint32_t)pload8(tbl + 0x18 + 3) << 8)
+                 | ((uint32_t)pload8(tbl + 0x18 + 4) << 16);
+
+    /* Enable A20 for access above 1MB */
+    int prev_a20 = a20_enabled;
+    a20_enabled = 1;
+
+    /* Copy CX words */
+    for (uint16_t i = 0; i < count; i++) {
+        uint16_t w = pload16(src + i * 2);
+        pstore16(dst + i * 2, w);
+    }
+
+    a20_enabled = prev_a20;
+
+    CPU_AH = 0x00;
+    cf = 0;
+    return true;
 }
 
 /*
@@ -177,14 +214,84 @@ bool bios_15h() {
     switch(CPU_AH) {
         case 0x24:
             return bios_15h_24h(); // A20 GATE
+        case 0x52:  /* TODO: REMOVABLE MEDIA EJECT — SeaBIOS: always success */
+            cf = 0;
+            CPU_AH = 0x00;
+            return true;
+        case 0x86: { /* WAIT — CX:DX microseconds */
+            uint32_t usec = ((uint32_t)CPU_CX << 16) | CPU_DX;
+            sleep_us(usec);  /* Pico SDK: busy-waits but yields to hardware */
+            cf = 0;
+            CPU_AH = 0x00;
+            return true;
+        }
+        case 0x83: {
+            if (CPU_AL == 0x01) {
+                pstore8(0x4A0, 0x00);
+                cf = 0; CPU_AH = 0x00;
+                return true;
+            }
+            if (CPU_AL != 0x00) { cf = 1; CPU_AH = 0x86; return true; }
+            if (pload8(0x4A0) & 0x01) { cf = 1; CPU_AH = 0x83; return true; }
+            uint32_t usec = ((uint32_t)CPU_CX << 16) | CPU_DX;
+            pstore8(0x4A0, 0x01);
+            sleep_us(usec);
+            uint32_t addr = (uint32_t)CPU_ES * 16 + CPU_BX;
+            pstore8(addr, pload8(addr) | 0x80);  /* set bit 7 of flag byte */
+            pstore8(0x4A0, 0x00);
+            cf = 0; CPU_AH = 0x00;
+            return true;
+        }
+
+        case 0x87:
+            return bios_15h_87h(); // COPY EXTENDED MEMORY
         case 0x88:
             return bios_15h_88h(); // GET EXTENDED MEMORY SIZE (286+)
+        case 0x90:  /* DEVICE BUSY — no-op (SeaBIOS: empty handler) */
+        case 0x91:  /* INTERRUPT COMPLETE — no-op (SeaBIOS: empty handler) */
+            return true;
         case 0xC0:
             return bios_15h_C0h(); // GET CONFIGURATION
-        default:
-            no_handler();
+        case 0xC1: { /* GET EBDA SEGMENT */
+            uint16_t ebda = pload16(0x40E);
+            if (ebda == 0x0000) {
+                cf = 1;  /* no EBDA */
+                return true;
+            }
+            CPU_ES = ebda;
+            cf = 0;
+            return true;
+        }            
+        case 0xE8: {
+            switch (CPU_AL) {
+            case 0x01: { /* GET EXTENDED MEMORY (>16MB support) */
+                uint32_t ext_kb = (uint16_t)cmos_read(0x17) | ((uint16_t)cmos_read(0x18) << 8);
+                uint32_t rs = (1024 + ext_kb) * 1024u; /* total RAM in bytes */
+                if (rs > 16*1024*1024) {
+                    CPU_CX = 15 * 1024;
+                    CPU_DX = (uint16_t)((rs - 16*1024*1024) / (64*1024));
+                } else {
+                    CPU_CX = (uint16_t)((rs - 1*1024*1024) / 1024);
+                    CPU_DX = 0;
+                }
+                CPU_AX = CPU_CX;
+                CPU_BX = CPU_DX;
+                cf = 0; CPU_AH = 0x00;
+                return true;
+            }
+            case 0x20: { /* E820 MEMORY MAP — 286 не поддерживает 32-bit регистры */
+                cf = 1; CPU_AH = 0x86;
+                return true;
+            }
+            default:
+                cf = 1; CPU_AH = 0x86;
+                return true;
+            }
+        }
         case 0x41: // WAIT ON EXTERNAL EVENT (CONVERTIBLE and some others)
         case 0x4F:  /* keyboard intercept — not hooked, pass through */
+        case 0x89:  /* SWITCH TO PROTECTED MODE — not supported, no PM in emulator */
+        default:
             // unsupported
     }
     cf = 1;
