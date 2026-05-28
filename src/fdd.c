@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <pico.h>
 
+#include "debug.h"
 #include "fdd.h"
 #include "disk.h"       /* disk[], chs2ofs helpers, FatFS FIL         */
 #include "ff.h"
@@ -242,13 +243,6 @@ static int fdc_chs_valid(int drivenum, int cyl, int head, int sect)
             (uint16_t)cyl  < cyls &&
             (uint16_t)head < heads);
 }
-
-#if TRACE_PORTS
-#include <stdarg.h>
-void debug_write(const char *fmt, ...);
-#else
-#define debug_write(...) (void)0
-#endif
 
 /* ------------------------------------------------------------------ */
 /*  IRQ                                                                 */

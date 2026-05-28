@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <stdlib.h>
+#include "debug.h"
 #include "i286.h"
 #include "bios.h"
 
@@ -520,7 +521,8 @@ static INLINE uint16_t makeflagsword(void) {
 #if CPU_386_EXTENDED_OPS
     return 2 | x86_flags.value;
 #else
-    return 2 | (x86_flags.value & 0b111111010101);
+// Это включает OF(11), DF(10), IF(9), TF(8), SF(7), ZF(6), AF(4), PF(2), CF(0) — все стандартные 286 флаги.
+    return 2 | (x86_flags.value & 0x0FD7);
 #endif
 }
 
@@ -545,6 +547,7 @@ static bool no_handler() {
     snprintf(buf, 10, "ES: %04xh", CPU_ES); print_line(buf, 12);
     snprintf(buf, 10, "CS: %04xh", CPU_CS); print_line(buf, 13);
     snprintf(buf, 10, "IP: %04xh", CPU_IP); print_line(buf, 14);
+    debug_write("ERROR: no handler defined %04x:%04x)\n", CPU_CS, CPU_IP);
 while(1); // remove it
     return true;
 }
@@ -555,6 +558,7 @@ static bool rp2350_bios_handler(uint8_t intnum) {
 
 if (intnum != 0x1C && intnum != 8) { // do not show timer
     print_line2("BIOS", 0, 8);
+    debug_write("rp2350_bios_handler(%x)\n", intnum);
 }
     bool normal_iret_flow = handlers[intnum]();
     uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
@@ -568,6 +572,12 @@ if (intnum != 0x1C && intnum != 8) { // do not show timer
         // some handlers should turn IF = 1, some - not
         // some patch stack, other - not
     }
+if (intnum != 0x1C && intnum != 8) { // do not show timer
+    debug_write(
+        "RET rp2350_bios_handler %02Xh AX:%04X BX:%04X CX:%04X DX:%04X ES:%04X FLAGS:%04X\n",
+        intnum, CPU_AX, CPU_BX, CPU_CX, CPU_DX, CPU_ES, makeflagsword()
+    );
+}
     return normal_iret_flow;
 }
 
@@ -625,6 +635,13 @@ if (intnum != 0x1C && intnum != 8) { // do not show timer
     u16 new_ip = getmem16(0, (uint16_t) intnum * 4);
     snprintf(buf, 79, "INT %02Xh DOS? %04X:%04X->%04X:%04X AX:%04X", intnum, CPU_CS, CPU_IP, new_cs, new_ip, CPU_AX);
     print_line(buf, 0);
+
+    debug_write(
+        "INT %02Xh %04X:%04X->%04X:%04X "
+        "AX:%04X BX:%04X CX:%04X DX:%04X ES:%04X FLAGS:%04X\n",
+        intnum, CPU_CS, CPU_IP, new_cs, new_ip,
+        CPU_AX, CPU_BX, CPU_CX, CPU_DX, CPU_ES, makeflagsword()
+    );
 }
     push(makeflagsword());
     push(CPU_CS);

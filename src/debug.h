@@ -18,4 +18,11 @@
 #define DBG_PRINT(...) ((void)0)
 #endif
 
+#if TRACE_PORTS
+#include <stdarg.h>
+void debug_write(const char *fmt, ...);
+#else
+#define debug_write(...) (void)0
+#endif
+
 #endif /* DEBUG_H */

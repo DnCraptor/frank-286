@@ -71,6 +71,7 @@ bool bios_16h(void)
 
     case 0x01: /* check keystroke */
     case 0x11: /* enhanced check keystroke */
+        cf = 0;  // ← явно сбросить CF (W/A)
         if (kbd_empty()) {
             zf = 1;
             return true;
