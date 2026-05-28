@@ -61,6 +61,11 @@ static bool bios_15h_87h(void)
      */
     uint32_t tbl = (uint32_t)CPU_ES * 16 + CPU_SI;
     uint16_t count = CPU_CX;  /* number of WORDS to copy */
+    if (count > 0x8000u) {
+        CPU_AH = 0x01;  /* invalid parameter */
+        cf = 1;
+        return true;
+    }
 
     /* Read 24-bit base from descriptor: bytes 2,3,4 */
     uint32_t src = (uint32_t)pload8(tbl + 0x10 + 2)
@@ -214,6 +219,9 @@ bool bios_15h() {
     switch(CPU_AH) {
         case 0x24:
             return bios_15h_24h(); // A20 GATE
+        case 0x4F:  /* keyboard intercept — not hooked, pass through */
+            cf = 1;  /* не перехватывать, AH не трогаем */
+            return true;
         case 0x52:  /* TODO: REMOVABLE MEDIA EJECT — SeaBIOS: always success */
             cf = 0;
             CPU_AH = 0x00;
@@ -289,7 +297,6 @@ bool bios_15h() {
             }
         }
         case 0x41: // WAIT ON EXTERNAL EVENT (CONVERTIBLE and some others)
-        case 0x4F:  /* keyboard intercept — not hooked, pass through */
         case 0x89:  /* SWITCH TO PROTECTED MODE — not supported, no PM in emulator */
         default:
             // unsupported
