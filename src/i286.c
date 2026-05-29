@@ -558,7 +558,9 @@ static bool rp2350_bios_handler(uint8_t intnum) {
 
 if (intnum != 0x1C && intnum != 8) { // do not show timer
     print_line2("BIOS", 0, 8);
-    debug_write("rp2350_bios_handler(%x)\n", intnum);
+    if (intnum != 0x16 && intnum != 9 && intnum != 0x1A) { // do not show keyboard, we are on int 13h debug stage now
+        debug_write("rp2350_bios_handler(%x)\n", intnum);
+    }
 }
     bool normal_iret_flow = handlers[intnum]();
     uint16_t flags_on_stack = getmem16(CPU_SS, CPU_SP + 4);
@@ -573,10 +575,12 @@ if (intnum != 0x1C && intnum != 8) { // do not show timer
         // some patch stack, other - not
     }
 if (intnum != 0x1C && intnum != 8) { // do not show timer
+    if (intnum != 0x16 && intnum != 9 && intnum != 0x1A) { // do not show keyboard, we are on int 13h debug stage now
     debug_write(
         "RET rp2350_bios_handler %02Xh AX:%04X BX:%04X CX:%04X DX:%04X ES:%04X FLAGS:%04X\n",
         intnum, CPU_AX, CPU_BX, CPU_CX, CPU_DX, CPU_ES, makeflagsword()
     );
+    }
 }
     return normal_iret_flow;
 }
@@ -636,12 +640,14 @@ if (intnum != 0x1C && intnum != 8) { // do not show timer
     snprintf(buf, 79, "INT %02Xh DOS? %04X:%04X->%04X:%04X AX:%04X", intnum, CPU_CS, CPU_IP, new_cs, new_ip, CPU_AX);
     print_line(buf, 0);
 
+    if (intnum != 0x16 && intnum != 9 && intnum != 0x1A) { // do not show keyboard, we are on int 13h debug stage now
     debug_write(
         "INT %02Xh %04X:%04X->%04X:%04X "
         "AX:%04X BX:%04X CX:%04X DX:%04X ES:%04X FLAGS:%04X\n",
         intnum, CPU_CS, CPU_IP, new_cs, new_ip,
         CPU_AX, CPU_BX, CPU_CX, CPU_DX, CPU_ES, makeflagsword()
     );
+    }
 }
     push(makeflagsword());
     push(CPU_CS);

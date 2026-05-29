@@ -1144,6 +1144,7 @@ PC *pc_new(void (*poll)(void *), void *redraw_data, u8 *fb, PCConfig *conf)
 	pc->mouse_enabled = 1;
 
 	pc->port92 = 0x2;
+	a20_enabled = true;
 	pc->shutdown_state = 0;
 	pc->reset_request = 0;
 	return pc;

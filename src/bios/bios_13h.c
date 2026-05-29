@@ -1,4 +1,5 @@
 #include <ff.h>
+#include "debug.h"
 #include "i286.h"
 #include "bios.h"
 #include "disk.h"
@@ -157,6 +158,9 @@ static bool int13_transfer_lba(const BiosDisk *d, uint32_t lba, uint16_t count,
         int13_set_status(drive, INT13_ST_SEEK_FAILED);
         return true;
     }
+debug_write("int13_transfer_lba DL=%02X CHS/LBA=%lu CNT=%u ES:BX=%04X:%04X PHYS=%05lX\n",
+            drive, lba, count, CPU_ES, CPU_BX,
+            ((uint32_t)CPU_ES << 4) + CPU_BX);
 
     uint8_t buf[512];
 
@@ -166,7 +170,7 @@ static bool int13_transfer_lba(const BiosDisk *d, uint32_t lba, uint16_t count,
 
         if (write) {
             for (uint32_t j = 0; j < 512; j++)
-                buf[j] = pload8(mem + j);
+                buf[j] = read86(mem + j);
 
             if (f_write(d->f, buf, 512, &done) != FR_OK || done != 512) {
                 CPU_AL = (uint8_t)i;
@@ -182,13 +186,18 @@ static bool int13_transfer_lba(const BiosDisk *d, uint32_t lba, uint16_t count,
 
             if (!verify) {
                 for (uint32_t j = 0; j < 512; j++)
-                    pstore8(mem + j, buf[j]);
+                    write86(mem + j, buf[j]);
             }
         }
     }
 
     if (write)
         f_sync(d->f);
+
+debug_write("INT13 DATA %02X %02X %02X %02X %02X %02X %02X %02X "
+            "%02X %02X %02X %02X %02X %02X %02X %02X\n",
+            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+            buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]);
 
     CPU_AL = (uint8_t)count;
     int13_set_status(drive, INT13_ST_OK);
@@ -573,19 +582,19 @@ static bool bios_13h_41h()
 static bool int13_decode_dap(uint32_t *lba, uint16_t *count, uint32_t *addr)
 {
     uint32_t dap = ((uint32_t)CPU_DS << 4) + CPU_SI;
-    uint8_t size = pload8(dap + 0);
+    uint8_t size = read86(dap + 0);
 
     if (size < 0x10)
         return false;
 
-    *count = pload16(dap + 2);
+    *count = readw86(dap + 2);
 
-    uint16_t off = pload16(dap + 4);
-    uint16_t seg = pload16(dap + 6);
+    uint16_t off = readw86(dap + 4);
+    uint16_t seg = readw86(dap + 6);
     *addr = ((uint32_t)seg << 4) + off;
 
-    *lba = pload32(dap + 8);
-    if (pload32(dap + 12) != 0)
+    *lba = readdw86(dap + 8);
+    if (readdw86(dap + 12) != 0)
         return false;
 
     return true;  /* count=0 валиден: SeaBIOS возвращает SUCCESS для пустого запроса */
@@ -753,7 +762,7 @@ static bool bios_13h_48h()
     BiosDisk d;
     uint8_t  drive = CPU_DL;
     uint32_t p     = ((uint32_t)CPU_DS << 4) + CPU_SI;
-    uint16_t caller_size = pload16(p);
+    uint16_t caller_size = readw86(p);
 
     if (!(drive & 0x80) || !int13_get_disk(drive, &d)) {
         int13_set_status(drive, INT13_ST_TIMEOUT);
@@ -775,69 +784,69 @@ static bool bios_13h_48h()
 
     // --- v1.x / v2.x часть (0x1A байт) ---
     uint16_t ret_size = 0x1A;
-    pstore16(p + 0x00, 0x1A);          // временно, обновим в конце
-    pstore16(p + 0x02, info_flags);
-    pstore32(p + 0x04, d.cyls);
-    pstore32(p + 0x08, d.heads);
-    pstore32(p + 0x0C, d.sects);
-    pstore32(p + 0x10, total);         // total sectors low
-    pstore32(p + 0x14, 0x00000000);    // total sectors high
-    pstore16(p + 0x18, 512);           // bytes per sector
+    writew86(p + 0x00, 0x1A);          // временно, обновим в конце
+    writew86(p + 0x02, info_flags);
+    writedw86(p + 0x04, d.cyls);
+    writedw86(p + 0x08, d.heads);
+    writedw86(p + 0x0C, d.sects);
+    writedw86(p + 0x10, total);         // total sectors low
+    writedw86(p + 0x14, 0x00000000);    // total sectors high
+    writew86(p + 0x18, 512);           // bytes per sector
 
     // --- v2.x DPTE pointer (0x1E байт) ---
     if (caller_size >= 0x1E) {
         ret_size = 0x1E;
         uint32_t dpte_addr = ((drive & 0x7F) == 0) ? DPTE_ADDR_0 : DPTE_ADDR_1;
-        pstore16(p + 0x1A, (uint16_t)(dpte_addr & 0x000F));          // offset
-        pstore16(p + 0x1C, (uint16_t)((dpte_addr >> 4) & 0xFFFF));   // segment
+        writew86(p + 0x1A, (uint16_t)(dpte_addr & 0x000F));          // offset
+        writew86(p + 0x1C, (uint16_t)((dpte_addr >> 4) & 0xFFFF));   // segment
     }
 
     // --- v3.0 Device Path (0x42 байт) ---
     if (caller_size >= 0x42) {
         ret_size = 0x42;
 
-        pstore16(p + 0x1E, 0xBEDD);    // key
-        pstore8 (p + 0x20, 0x22);      // dpi_length: 34 байт (от +20h до +41h включительно, SeaBIOS Phoenix: 36-2=34)
-        pstore8 (p + 0x21, 0x00);      // reserved1
-        pstore16(p + 0x22, 0x0000);    // reserved2
+        writew86(p + 0x1E, 0xBEDD);    // key
+        write86 (p + 0x20, 0x22);      // dpi_length: 34 байт (от +20h до +41h включительно, SeaBIOS Phoenix: 36-2=34)
+        write86 (p + 0x21, 0x00);      // reserved1
+        writew86(p + 0x22, 0x0000);    // reserved2
 
         // host_bus[4]: "ISA " (SeaBIOS: 4 байта, не 8)
         const char *bus = "ISA ";
         for (int i = 0; i < 4; i++)
-            pstore8(p + 0x24 + i, (uint8_t)bus[i]);
+            write86(p + 0x24 + i, (uint8_t)bus[i]);
 
         // iface_type[8]: "ATA     "
         const char *iface = "ATA     ";
         for (int i = 0; i < 8; i++) {
-            pstore8(p + 0x28 + i, (uint8_t)iface[i]);
+            write86(p + 0x28 + i, (uint8_t)iface[i]);
         }
 
         // iface_path: u64 (8 байт) начиная с +30h (SeaBIOS: offset of iface_path in int13dpt_s)
         uint16_t iobase = ((drive & 0x7F) < 2) ? 0x01F0 : 0x0170;
-        pstore16(p + 0x30, iobase);
-        pstore16(p + 0x32, 0x0000);
-        pstore32(p + 0x34, 0x00000000);
+        writew86(p + 0x30, iobase);
+        writew86(p + 0x32, 0x0000);
+        writedw86(p + 0x34, 0x00000000);
 
         // device_path: u64 (8 байт) начиная с +38h (SeaBIOS: phoenix.device_path)
         uint8_t devnum = (drive & 1) ? 1 : 0;
-        pstore8 (p + 0x38, devnum);
-        pstore8 (p + 0x39, 0x00);
-        pstore16(p + 0x3A, 0x0000);
-        pstore32(p + 0x3C, 0x00000000);
+        write86 (p + 0x38, devnum);
+        write86 (p + 0x39, 0x00);
+        writew86(p + 0x3A, 0x0000);
+        writedw86(p + 0x3C, 0x00000000);
 
         // reserved3: +40h
-        pstore8 (p + 0x40, 0x00);
+        write86 (p + 0x40, 0x00);
 
         // checksum: +41h (SeaBIOS phoenix.checksum)
         // считается по байтам +1Eh..+40h (SeaBIOS: checksum_far(seg, param_far+30, 35) = от struct offset 0x1E, 35 байт)
         // записывается в +41h — последний байт буфера 0x42
         uint8_t sum = 0;
         for (uint32_t i = 0x1E; i < 0x41; i++)
-            sum += pload8(p + i);
-        pstore8(p + 0x41, (uint8_t)((-sum) & 0xFF));  // +41h = последний байт
+            sum += read86(p + i);
+        write86(p + 0x41, (uint8_t)((-sum) & 0xFF));  // +41h = последний байт
     }
 
-    pstore16(p + 0x00, ret_size);  // финальный размер
+    writew86(p + 0x00, ret_size);  // финальный размер
     int13_set_status(drive, INT13_ST_OK);
     return true;
 }

@@ -320,6 +320,7 @@ target_compile_definitions(${BUILD_NAME} PRIVATE
     # Version information
     FRANK_286_VERSION_MAJOR=${FRANK_286_VERSION_MAJOR}
     FRANK_286_VERSION_MINOR=${FRANK_286_VERSION_MINOR}
+    #TRACE_PORTS=1
 
     # Board configuration
     BOARD_${BOARD}

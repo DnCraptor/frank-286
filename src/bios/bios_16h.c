@@ -118,7 +118,11 @@ bool bios_16h(void)
          return true;        
 
     default:
-        /* SeaBIOS handle_16XX: warn and return, no hang */
+        /* SeaBIOS handle_16XX: warn and return, no hang
+        CPU_AH = 0x86;
+        cf = 1;
+        zf = 0;
+        */
         return true;
     }
 }
